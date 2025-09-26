@@ -70,7 +70,7 @@ static/build/
 /src/legacy/
 
 # Model artifacts
-#models/
+models/
 !models/.gitkeep
 
 # XGBoost / model dumps (anywhere)

@@ -1,0 +1,162 @@
+<script>
+let currentPage = 1;
+let lastRequestCache = null;
+
+function $(id){ return document.getElementById(id); }
+function setText(id, text){ $(id).textContent = text; }
+function toggle(el, show){ el.classList[show ? 'remove' : 'add']('hide'); }
+
+function toggleUploadDisabled(){
+  const useDemo = $('use_demo').checked;
+  $('upload_csv').disabled = useDemo;
+}
+
+function onScopeChange(){
+  const scope = $('scope').value;
+  // reset visibility
+  toggle($('single-target-fields'), scope === 'single_target');
+  toggle($('store-only-field'), scope === 'latest_per_store');
+  toggle($('item-only-field'), scope === 'latest_per_item');
+  toggle($('last-n-field'), scope === 'last_n_days');
+  toggle($('since-field'), scope === 'since_date');
+
+  const notes = {
+    single_target: 'Predict for one specific store_id & item_id at their latest date.',
+    latest_per_pair: 'Predict the latest date for every (store_id, item_id) pair.',
+    latest_per_store: 'Predict the latest date for all items in the selected store.',
+    latest_per_item: 'Predict the latest date for the selected item across stores.',
+    last_n_days: 'Predict for all rows within the last N days.',
+    since_date: 'Predict for all rows since the provided date.'
+  };
+  setText('scope-note', notes[scope] || '');
+}
+
+function resetForm(){
+  $('scope').value = 'single_target';
+  $('horizons').value = '{{ default_horizons }}';
+  $('target_store_id').value = '';
+  $('target_item_id').value = '';
+  $('target_store_id_only').value = '';
+  $('target_item_id_only').value = '';
+  $('days').value = '7';
+  $('since_date').value = '';
+  $('use_demo').checked = true;
+  toggleUploadDisabled();
+  $('upload_csv').value = '';
+  $('assume_nc').checked = true;
+  $('page_size').value = '50';
+  onScopeChange();
+  // clear results
+  const body = $('results-body');
+  body.innerHTML = '<tr><td colspan="6" class="hint">Run a forecast to see results.</td></tr>';
+  $('chips').innerHTML = '';
+  setText('page-info', 'Page 1 / 1');
+  currentPage = 1;
+}
+
+function collectRequest(page){
+  const scope = $('scope').value;
+  const horizons = $('horizons').value.trim();
+  const assume_no_change = $('assume_nc').checked ? true : false;
+  const page_size = parseInt($('page_size').value, 10) || 50;
+  const hol_country = $('hol_country').value.trim();
+  const hol_subdiv = $('hol_subdiv').value.trim();
+
+  const req = {
+    scope, horizons, assume_no_change, page, page_size,
+    hol_country, hol_subdiv: hol_subdiv || null
+  };
+
+  if (scope === 'single_target'){
+    req.target_store_id = $('target_store_id').value.trim();
+    req.target_item_id = $('target_item_id').value.trim();
+  } else if (scope === 'latest_per_store'){
+    req.target_store_id = $('target_store_id_only').value.trim();
+  } else if (scope === 'latest_per_item'){
+    req.target_item_id = $('target_item_id_only').value.trim();
+  } else if (scope === 'last_n_days'){
+    req.days = parseInt($('days').value, 10) || 7;
+  } else if (scope === 'since_date'){
+    req.since_date = $('since_date').value || null;
+  }
+  return req;
+}
+
+async function runForecast(page){
+  currentPage = page || 1;
+  const useDemo = $('use_demo').checked;
+  const fileInput = $('upload_csv');
+  const hasFile = fileInput.files && fileInput.files.length > 0;
+
+  const req = collectRequest(currentPage);
+  lastRequestCache = { useDemo, hasFile, req };
+
+  let resp;
+  if (!useDemo && hasFile){
+    // multipart upload path
+    const form = new FormData();
+    form.append('file', fileInput.files[0]);
+    form.append('meta', new Blob([JSON.stringify(req)], { type: 'application/json'}));
+    resp = await fetch('/forecast/upload', { method:'POST', body: form });
+  } else {
+    // plain JSON
+    resp = await fetch('/forecast', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(req) });
+  }
+
+  if (!resp.ok){
+    const msg = await resp.text();
+    renderError(`Error ${resp.status}: ${msg}`);
+    return;
+  }
+
+  const data = await resp.json();
+  renderResults(data);
+}
+
+function renderError(text){
+  $('chips').innerHTML = `<span class="chip" style="border-color:var(--err);color:#fecaca;background:rgba(239,68,68,.15)">${text}</span>`;
+  $('results-body').innerHTML = `<tr><td colspan="6" style="color:#fecaca">${text}</td></tr>`;
+  setText('page-info', '—');
+}
+
+function renderResults(data){
+  // chips
+  const chips = [];
+  chips.push(`<span class="chip">Scope: ${data.scope}</span>`);
+  chips.push(`<span class="chip">Horizons: ${data.horizons.join(',')}</span>`);
+  chips.push(`<span class="chip">Rows: ${data.rows_scored} / ${data.total_rows}</span>`);
+  chips.push(`<span class="chip">Page ${data.page} / ${data.pages}</span>`);
+  $('chips').innerHTML = chips.join('');
+
+  // table
+  const body = $('results-body');
+  if (!data.predictions || data.predictions.length === 0){
+    body.innerHTML = '<tr><td colspan="6" class="hint">No rows to display.</td></tr>';
+  } else {
+    body.innerHTML = data.predictions.map(r => `
+      <tr>
+        <td>${r.store_id}</td>
+        <td>${r.item_id}</td>
+        <td>${r.base_date}</td>
+        <td>${r.target_date}</td>
+        <td>${r.horizon}</td>
+        <td>${Number(r.pred).toFixed(3)}</td>
+      </tr>
+    `).join('');
+  }
+  setText('page-info', `Page ${data.page} / ${data.pages}`);
+}
+
+function prevPage(){
+  if (currentPage <= 1) return;
+  runForecast(currentPage - 1);
+}
+function nextPage(){
+  runForecast(currentPage + 1);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  onScopeChange();
+  toggleUploadDisabled();
+});
+</script>

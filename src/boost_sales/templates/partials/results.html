@@ -1,0 +1,37 @@
+<h2>Results</h2>
+
+<div class="toolbar">
+  <div class="chips" id="chips"></div>
+  <div class="pagination">
+    <label for="page_size" class="hint">Rows</label>
+    <select id="page_size">
+      <option selected>10</option>
+      <option>25</option>
+      <option>50</option>
+      <option>100</option>
+      <option>250</option>
+      <option>500</option>
+    </select>
+    <button class="btn secondary" type="button" onclick="prevPage()">Prev</button>
+    <span id="page-info" class="hint nowrap">Page 1 / 1</span>
+    <button class="btn secondary" type="button" onclick="nextPage()">Next</button>
+  </div>
+</div>
+
+<div style="overflow:auto;border-radius:12px;border:1px solid var(--border)">
+  <table>
+    <thead>
+      <tr>
+        <th>store_id</th>
+        <th>item_id</th>
+        <th>base_date</th>
+        <th>target_date</th>
+        <th>h</th>
+        <th>sales</th>
+      </tr>
+    </thead>
+    <tbody id="results-body">
+      <tr class="msg-row"><td colspan="6" class="hint">Run a forecast to see results.</td></tr>
+    </tbody>
+  </table>
+</div>

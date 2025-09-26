@@ -1,0 +1,67 @@
+# --- Python bytecode & caches ---
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+.eggs/
+.pytype/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# --- Build / distribution artifacts ---
+/build/
+/dist/
+/wheelhouse/
+
+# --- Virtual environments ---
+.venv/
+venv/
+env/
+
+# --- IDE / editor junk ---
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# --- OS cruft ---
+.DS_Store
+Thumbs.db
+
+# --- Logs & coverage ---
+*.log
+logs/
+.coverage*
+coverage.xml
+htmlcov/
+
+# --- Notebooks ---
+.ipynb_checkpoints/
+
+# --- Local config / secrets (if any) ---
+.env
+.env.*
+*.secret
+*.secrets
+
+# --- Project-specific generated data/outputs ---
+# keep sample data out of VCS (adjust if data/sales.csv is intentionally tracked)
+data/*.csv
+data/*.parquet
+data/*.xlsx
+data/*.json
+
+# run outputs & reports
+preds*.csv
+parity_report.json
+artifacts/
+
+# legacy compiled caches
+src/**/__pycache__/
+
+# --- Frontend/static build outputs (if added later) ---
+static/build/

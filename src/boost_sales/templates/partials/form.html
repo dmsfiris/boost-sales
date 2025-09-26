@@ -1,0 +1,218 @@
+<h2>Request</h2>
+
+<form id="forecast-form" onsubmit="event.preventDefault(); runForecast(1);" enctype="multipart/form-data">
+  <!-- scope row -->
+  <div class="row">
+    <div class="field">
+      <label for="scope">Forecast scope</label>
+      <select id="scope" name="scope" onchange="onScopeChange()">
+        <option value="single" selected>Single target (store_id + item_id)</option>
+        <option value="latest_per_pair">Latest per (store_id,item_id)</option>
+        <option value="latest_per_store">Latest for a store (all items)</option>
+        <option value="latest_per_item">Latest for an item (across stores)</option>
+        <option value="last_n_days">Last N days (all)</option>
+        <option value="since_date">Since date (all)</option>
+        <option value="at_date">At date (exact day)</option>
+      </select>
+      <p class="scope-note" id="scope-note">
+        Predict for one specific store_id &amp; item_id at their latest date.
+      </p>
+    </div>
+
+    <div class="field">
+      <label for="horizons">Horizons (e.g. 1-7)</label>
+      <input id="horizons" name="horizons" type="text" value="{{ default_horizons }}">
+      <span class="hint">Ranges (“1-7”) and lists (“1,3,5”) supported.</span>
+    </div>
+  </div>
+
+  <!-- models dir -->
+  <div class="row">
+    <div class="field" style="flex:1">
+      <label for="models_dir">Models directory</label>
+      <input id="models_dir" name="models_dir" type="text" value="{{ models_dir or 'models' }}" placeholder="e.g., models">
+      <span class="hint">Folder to load trained models from (same path you set on the Training page). Leave as default unless you trained elsewhere.</span>
+    </div>
+  </div>
+
+  <!-- single target inputs -->
+  <div class="row" id="single-target-fields">
+    <div class="field">
+      <label for="target_store_id">Target store_id</label>
+      <input id="target_store_id" name="store_id" type="text" placeholder="e.g. S01">
+    </div>
+    <div class="field">
+      <label for="target_item_id">Target item_id</label>
+      <input id="target_item_id" name="item_id" type="text" placeholder="e.g. I01">
+    </div>
+  </div>
+
+  <!-- other scope params -->
+  <div class="row hide" id="store-only-field">
+    <div class="field">
+      <label for="target_store_id_only">Store for “latest per store”</label>
+      <input id="target_store_id_only" type="text" placeholder="e.g. S01">
+    </div>
+  </div>
+
+  <div class="row hide" id="item-only-field">
+    <div class="field">
+      <label for="target_item_id_only">Item for “latest per item”</label>
+      <input id="target_item_id_only" type="text" placeholder="e.g. I01">
+    </div>
+  </div>
+
+  <div class="row hide" id="last-n-field">
+    <div class="field">
+      <label for="days">Last N days</label>
+      <input id="days" type="number" min="1" value="7">
+    </div>
+  </div>
+
+  <div class="row hide" id="since-field">
+    <div class="field">
+      <label for="since_date">Since date</label>
+      <input id="since_date" type="date">
+    </div>
+  </div>
+
+  <div class="row hide" id="at-date-field">
+    <div class="field">
+      <label for="at_date">At date</label>
+      <input id="at_date" type="date">
+    </div>
+  </div>
+
+  <!-- data source -->
+  <div class="row">
+    <div class="field">
+      <label>Data source</label>
+      <div class="switch">
+        <input type="checkbox" id="use_demo" name="use_demo_csv" checked onchange="toggleUploadDisabled()">
+        <label for="use_demo">Use demo CSV</label>
+      </div>
+      <span class="hint">If unchecked, you can upload your own CSV.</span>
+    </div>
+
+    <div class="field">
+      <label for="upload_csv">Upload CSV (optional)</label>
+      <input id="upload_csv" name="file" type="file" accept=".csv,text/csv" disabled>
+      <span class="hint">Required columns: date, store_id, item_id, sales, price, promo</span>
+    </div>
+  </div>
+
+  <!-- future plans -->
+  <div class="row">
+    <div class="field">
+      <label for="price_future">Future price plan</label>
+      <input id="price_future" name="price_future" type="text" placeholder="Scalar or CSV">
+      <span class="hint">
+        Scalar multiplies current price (e.g., <code>0.9</code> for −10%). Percents allowed (e.g., <code>90%</code>).
+        CSV sets absolute price per horizon (e.g., <code>12.5,12.7,12.9</code>).
+      </span>
+    </div>
+    <div class="field">
+      <label for="promo_future">Future promo plan</label>
+      <input id="promo_future" name="promo_future" type="text" placeholder="Scalar 0/1/0.5 or CSV">
+      <span class="hint">
+        Use 0/1, a fraction like <code>0.5</code>, or a percent like <code>50%</code>. Lists per horizon allowed
+        (e.g., <code>0,0,0,0.5,0,0,0</code>). If you leave both plans blank, we assume “no change” safely.
+      </span>
+    </div>
+  </div>
+
+  <!-- formatting -->
+  <div class="row">
+    <div class="field" style="flex:1">
+      <label for="unit_type">Unit type</label>
+      <div class="inline-fields">
+        <select id="unit_type" name="unit_type">
+          <option value="integer" selected>Integer</option>
+          <option value="float">Float</option>
+        </select>
+        <span id="decimal_wrap" style="display:none;">
+          <input id="decimal_places" name="decimal_places" type="number" min="0" max="6" value="2" aria-label="Decimal places">
+        </span>
+      </div>
+      <span class="hint">Decimals appear only when “Float” is selected.</span>
+    </div>
+  </div>
+
+  <!-- TRY AN EXAMPLE (full-width) -->
+  <details style="margin: 8px 0;">
+    <summary>Try an example</summary>
+    <div class="row" style="display:block;">
+      <div class="field" style="flex:1 1 100%; width:100%;">
+        <label for="example_scenario">Example scenarios</label>
+        <select id="example_scenario" style="width:100%;" title="Choose a scenario to auto-fill the form">
+          <option value="single_promo_derived">
+            Single target: S01 + I01, horizons 1–7, 50% promo on day 4 (price auto-derived)
+          </option>
+          <option value="latest_per_store_clean">
+            Latest per store: Store S03, horizons 1–7, no promo/price plan
+          </option>
+          <option value="last7_markdown">
+            Last 7 days (all): horizons 1–3, 10% markdown across horizons
+          </option>
+        </select>
+        <div style="margin-top:8px;display:flex;gap:8px;align-items:center;">
+          <button type="button" class="btn secondary" onclick="applyExample()">Apply example</button>
+          <span class="hint">This pre-fills the form using the demo CSV.</span>
+        </div>
+      </div>
+    </div>
+  </details>
+
+  <!-- optional paging (hidden inputs use unique IDs to avoid clashing with results toolbar) -->
+  <input type="hidden" id="page_hidden" name="page" value="1">
+  <input type="hidden" id="page_size_hidden" name="page_size" value="100">
+
+  <div style="margin-top:10px;display:flex;gap:10px">
+    <button class="btn" type="submit">Run forecast</button>
+    <button class="btn secondary" type="button" onclick="resetForm()">Reset</button>
+  </div>
+</form>
+
+<script>
+  // Minimal inline helper: just fills fields; no unit/decimal logic here.
+  // If main.js already defines window.applyExample, this will simply call it.
+  function applyExample() {
+    if (typeof window.applyExample === 'function') {
+      return window.applyExample();
+    }
+    // Fallback (kept from your original snippet)
+    const sel = document.getElementById('example_scenario');
+    const val = sel ? sel.value : '';
+
+    // Always default to demo CSV for examples
+    const useDemo = document.getElementById('use_demo');
+    if (useDemo) {
+      useDemo.checked = true;
+      if (typeof toggleUploadDisabled === 'function') toggleUploadDisabled();
+    }
+
+    if (val === 'single_promo_derived') {
+      document.getElementById('scope').value = 'single';
+      if (typeof onScopeChange === 'function') onScopeChange();
+      document.getElementById('target_store_id').value = 'S01';
+      document.getElementById('target_item_id').value = 'I01';
+      document.getElementById('horizons').value = '1-7';
+      document.getElementById('promo_future').value = '0,0,0,0.5,0,0,0';
+      document.getElementById('price_future').value = '';
+    } else if (val === 'latest_per_store_clean') {
+      document.getElementById('scope').value = 'latest_per_store';
+      if (typeof onScopeChange === 'function') onScopeChange();
+      document.getElementById('target_store_id_only').value = 'S03';
+      document.getElementById('horizons').value = '1-7';
+      document.getElementById('promo_future').value = '';
+      document.getElementById('price_future').value = '';
+    } else if (val === 'last7_markdown') {
+      document.getElementById('scope').value = 'last_n_days';
+      if (typeof onScopeChange === 'function') onScopeChange();
+      document.getElementById('days').value = '7';
+      document.getElementById('horizons').value = '1-3';
+      document.getElementById('price_future').value = '0.9';
+      document.getElementById('promo_future').value = '0';
+    }
+  }
+</script>

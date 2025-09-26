@@ -1,0 +1,133 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "boost-sales"
+version = "0.1.0"
+description = "Production-ready XGBoost sales forecasting toolkit with FastAPI web UI & API, configurable pipeline (global or per-group), holiday features, and price/promo what-if simulations."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "Dimitrios S. Sfyris", email = "dmsfiris@otenet.gr" }]
+keywords = ["forecasting", "xgboost", "time-series", "retail", "ml"]
+classifiers = [
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Topic :: Scientific/Engineering :: Information Analysis"
+]
+
+dependencies = [
+  "pandas>=2.0",
+  "numpy>=1.24",
+  "xgboost>=2.0",
+  "typer>=0.12",
+  "pydantic>=2.7",
+  "holidays>=0.55",
+  # optional: speeds CSV I/O, but skip on Apple Silicon macOS
+  "pyarrow>=12; sys_platform != 'darwin' or platform_machine != 'arm64'",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0.0",
+  "pytest-cov>=4.1.0",
+  "ruff>=0.5.0",
+  "black>=24.3.0",
+  "isort>=5.13.0",
+  "mypy>=1.8.0",
+]
+webui = [
+  "fastapi>=0.114,<0.116",
+  "uvicorn[standard]>=0.30,<0.31",
+  "jinja2>=3.1,<4",
+  "python-multipart>=0.0.9",
+  # optional nicety:
+  "orjson>=3.9 ; sys_platform != 'win32'",
+]
+# Union of dev + webui (PEP 621 can't reference extras, so list explicitly)
+all = [
+  "pytest>=8.0.0",
+  "pytest-cov>=4.1.0",
+  "ruff>=0.5.0",
+  "black>=24.3.0",
+  "isort>=5.13.0",
+  "mypy>=1.8.0",
+  "fastapi>=0.114,<0.116",
+  "uvicorn[standard]>=0.30,<0.31",
+  "jinja2>=3.1,<4",
+  "python-multipart>=0.0.9",
+  "orjson>=3.9 ; sys_platform != 'win32'",
+]
+
+[project.scripts]
+boost-sales = "boost_sales.cli:app"  # CLI command (hyphen)
+
+[project.urls]
+Repository = "https://github.com/dmsfiris/boost-sales"
+Homepage = "https://github.com/dmsfiris/boost-sales"
+Issues = "https://github.com/dmsfiris/boost-sales/issues"
+Documentation = "https://github.com/dmsfiris/boost-sales#readme"
+
+[tool.setuptools]
+include-package-data = true
+
+# Ensure templates/static are packaged with the wheel
+[tool.setuptools.package-data]
+"boost_sales" = [
+  "templates/*.html",
+  "templates/**/*.html",
+  "static/*",
+  "static/**/*",
+]
+
+[tool.setuptools.package-dir]
+"" = "src"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["boost_sales*"]
+namespaces = false
+
+# ---- Dev tool configs ----
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+select = ["E", "F", "I", "B"]
+exclude = ["src/legacy"]
+
+[tool.black]
+line-length = 100
+target-version = ["py39"]
+exclude = '''
+/(
+    \.venv
+  | build
+  | dist
+  | src/legacy
+)/
+'''
+
+[tool.isort]
+profile = "black"
+line_length = 100
+skip = ["src/legacy"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+addopts = "-q"
+testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.9"
+ignore_missing_imports = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+exclude = "src/legacy"

@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Sales Forecast{% endblock %}
+
+{% block header_title %}Forecast{% endblock %}
+{% block header_subtitle %}Generate store/item predictions and simulate next-week price & promo plans.{% endblock %}
+
+{% block content %}
+<div class="grid">
+  <section class="card">
+    {% include "partials/form.html" %}
+  </section>
+
+  <section class="card">
+    {% include "partials/results.html" %}
+  </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+  {% include "partials/scripts.html" %}
+{% endblock %}

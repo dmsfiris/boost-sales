@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Sales Forecast — Home{% endblock %}
+
+{% block header_title %}Sales Forecast Console{% endblock %}
+{% block header_subtitle %}Start here: train models or generate forecasts from your sales data.{% endblock %}
+
+{% block content %}
+<div class="grid">
+  <section class="card">
+    <h2>Forecast</h2>
+    <p class="hint">Generate predictions. You’ll choose the scope (single, latest per pair, etc.) on the next page.</p>
+    <p><a class="btn" href="/forecast">Open Forecast</a></p>
+  </section>
+
+  <section class="card">
+    <h2>Train</h2>
+    <p class="hint">Retrain models (global or per-group). Configure horizons, holidays, threads, and more.</p>
+    <p><a class="btn" href="/training">Open Training</a></p>
+  </section>
+</div>
+{% endblock %}

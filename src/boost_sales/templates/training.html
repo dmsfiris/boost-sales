@@ -1,0 +1,259 @@
+{% extends "base.html" %}
+{% block title %}Training · Sales Forecast{% endblock %}
+
+{% block header_title %}Training{% endblock %}
+{% block header_subtitle %}Retrain models globally or per group with configurable XGBoost settings.{% endblock %}
+
+{% block content %}
+<section class="card">
+<form id="training-form" onsubmit="event.preventDefault(); runTraining();" enctype="multipart/form-data">
+
+  <!-- mode & scope -->
+  <div class="row">
+    <div class="field">
+      <label for="train_mode">Mode</label>
+      <select id="train_mode" name="mode" onchange="trOnModeChange()">
+        <option value="global" selected>Global (one model per horizon)</option>
+        <option value="per_group">Per-group (separate models)</option>
+      </select>
+      <span class="hint">Global is fastest. Per-group trains separate models per pair/item/store.</span>
+    </div>
+
+    <div class="field" id="train-scope-row" style="display:none">
+      <label for="train_scope">Per-group scope</label>
+      <select id="train_scope" name="train_scope">
+        <option value="pair" selected>By (store_id, item_id) pair</option>
+        <option value="item">By item (across stores)</option>
+        <option value="store">By store (all items)</option>
+      </select>
+      <span class="hint">Only used when Mode = Per-group.</span>
+    </div>
+  </div>
+
+  <!-- presets -->
+  <div class="row">
+    <div class="field" style="flex:1 1 100%;">
+      <label for="tr_preset">Preset</label>
+      <div class="inline-fields" style="gap:8px;align-items:center">
+        <select id="tr_preset" title="Choose a quick configuration preset">
+          <option value="balanced" selected>Balanced (good default)</option>
+          <option value="fast">Fast (smaller, quicker)</option>
+          <option value="quality">High accuracy (bigger, slower)</option>
+          <option value="gpu">GPU (if XGBoost with CUDA)</option>
+        </select>
+        <button type="button" class="btn secondary nowrap" onclick="applyTrainingPreset()">Apply preset</button>
+      </div>
+      <span class="hint">Presets only fill the form; you can tweak anything afterwards.</span>
+    </div>
+  </div>
+
+  <!-- data source -->
+  <div class="row">
+    <div class="field">
+      <label>Data source</label>
+      <div class="switch">
+        <input type="checkbox" id="tr_use_demo" name="use_demo_csv" checked onchange="trToggleUploadDisabled()">
+        <label for="tr_use_demo">Use server CSV</label>
+      </div>
+      <span class="hint">When off, upload your own CSV (columns: date, store_id, item_id, sales, price, promo).</span>
+    </div>
+    <div class="field">
+      <label for="tr_upload_csv">Upload CSV</label>
+      <input id="tr_upload_csv" name="file" type="file" accept=".csv,text/csv" disabled>
+      <span class="hint">Disabled while “Use server CSV” is on.</span>
+    </div>
+  </div>
+
+  <!-- paths & horizons -->
+  <div class="row">
+    <div class="field">
+      <label for="tr_models_dir">Models directory</label>
+      <input id="tr_models_dir" name="models_dir" type="text" value="{{ models_dir or 'models' }}">
+      <span class="hint">Models will be written here (and nested for per-group).</span>
+      <div class="switch" style="margin-top:8px">
+        <input type="checkbox" id="tr_wipe" name="wipe">
+        <label for="tr_wipe">Wipe outputs first</label>
+      </div>
+      <span class="hint">Global: deletes <code>models_dir</code>. Per-group: deletes only the selected scope folder.</span>
+    </div>
+
+    <div class="field">
+      <label for="tr_horizons">Horizons</label>
+      <input id="tr_horizons" name="horizons" type="text" value="{{ default_horizons }}">
+      <span class="hint">Ranges (“1-7”) and lists (“1,3,5”) supported.</span>
+    </div>
+  </div>
+
+  <!-- holidays -->
+  <div class="row">
+    <div class="field">
+      <label for="tr_hol_country">Holidays</label>
+      <div class="inline-fields">
+        <input id="tr_hol_country" name="hol_country" class="sm-input" type="text"
+               value="{{ hol_country }}" placeholder="Country (e.g. US)" aria-label="Holiday country">
+        <input id="tr_hol_subdiv" name="hol_subdiv" class="sm-input" type="text"
+               value="{{ hol_subdiv }}" placeholder="Subdiv (e.g. CA)" aria-label="Holiday subdivision">
+      </div>
+      <span class="hint">
+        Holidays can improve accuracy by capturing demand spikes and dips. Choose the country for your data; optionally add a subdivision for state/province holidays.
+      </span>
+    </div>
+  </div>
+
+  <!-- xgboost core knobs -->
+  <div class="row">
+    <div class="field">
+      <label for="tr_nthread">nthread</label>
+      <input id="tr_nthread" name="nthread" type="number" min="1" value="4">
+      <span class="hint">Parallel threads for XGBoost.</span>
+    </div>
+    <div class="field">
+      <label for="tr_tree_method">tree_method</label>
+      <select id="tr_tree_method" name="tree_method">
+        <option value="hist" selected>hist (fast CPU)</option>
+        <option value="approx">approx</option>
+        <option value="exact">exact (slow)</option>
+        <option value="gpu_hist">gpu_hist (requires GPU build)</option>
+      </select>
+      <span class="hint">“hist” is a good default for speed.</span>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="field">
+      <label for="tr_n_estimators">n_estimators</label>
+      <input id="tr_n_estimators" name="n_estimators" type="number" min="50" step="50" value="300" oninput="trSuggestES()">
+      <span class="hint">More = higher potential quality, slower.</span>
+    </div>
+    <div class="field">
+      <label for="tr_max_depth">max_depth</label>
+      <input id="tr_max_depth" name="max_depth" type="number" min="2" max="12" value="6" placeholder="6–8 typical; deeper = slower/overfit risk">
+      <span class="hint">Higher depth fits more complex patterns.</span>
+    </div>
+    <div class="field">
+      <label for="tr_learning_rate">learning_rate</label>
+      <input id="tr_learning_rate" name="learning_rate" type="number" min="0.005" max="0.5" step="0.005" value="0.05" placeholder="0.03–0.1; lower = steadier but needs more trees">
+      <span class="hint">Lower LR often needs more trees (n_estimators).</span>
+    </div>
+  </div>
+
+  <!-- advanced hyperparams -->
+  <details style="margin: 6px 0;">
+    <summary>Advanced hyperparameters</summary>
+    <div class="row">
+      <div class="field">
+        <label for="tr_subsample">subsample</label>
+        <input id="tr_subsample" name="subsample" type="number" min="0.1" max="1.0" step="0.05" value="0.8" placeholder="0.7–0.9 helps generalization">
+      </div>
+      <div class="field">
+        <label for="tr_colsample_bytree">colsample_bytree</label>
+        <input id="tr_colsample_bytree" name="colsample_bytree" type="number" min="0.1" max="1.0" step="0.05" value="0.8" placeholder="0.7–0.9 helps generalization">
+      </div>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label for="tr_min_child_weight">min_child_weight</label>
+        <input id="tr_min_child_weight" name="min_child_weight" type="number" min="0" step="0.1" placeholder="">
+      </div>
+      <div class="field">
+        <label for="tr_gamma">gamma</label>
+        <input id="tr_gamma" name="gamma" type="number" min="0" step="0.1" placeholder="">
+      </div>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label for="tr_reg_alpha">reg_alpha</label>
+        <input id="tr_reg_alpha" name="reg_alpha" type="number" min="0" step="0.1" placeholder="">
+      </div>
+      <div class="field">
+        <label for="tr_reg_lambda">reg_lambda</label>
+        <input id="tr_reg_lambda" name="reg_lambda" type="number" min="0" step="0.1" placeholder="">
+      </div>
+      <div class="field">
+        <label for="tr_max_bin">max_bin</label>
+        <input id="tr_max_bin" name="max_bin" type="number" min="64" step="1" placeholder="set 512 for a tiny lift, slightly slower">
+      </div>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label for="tr_random_state">random_state</label>
+        <input id="tr_random_state" name="random_state" type="number" step="1" value="42" placeholder="">
+      </div>
+      <div class="field">
+        <label for="tr_req_notna">required_feature_notna</label>
+        <input id="tr_req_notna" name="required_feature_notna" type="text" placeholder="comma-separated, e.g. price_h1,promo_h1">
+        <span class="hint">If provided, rows with NaN in any of these features are excluded from training.</span>
+      </div>
+    </div>
+  </details>
+
+  <!-- validation & run behaviour -->
+  <div class="row">
+    <div class="field">
+      <label for="tr_valid_cutoff_date">Validation cutoff</label>
+      <input id="tr_valid_cutoff_date" name="valid_cutoff_date" type="date" oninput="trSuggestES()">
+      <span class="hint">Optional explicit cutoff date (takes precedence over “last N days”).</span>
+    </div>
+    <div class="field">
+      <label for="tr_valid_tail_days">Validation window (last N days)</label>
+      <input id="tr_valid_tail_days" name="valid_tail_days" type="number" min="1" value="28" placeholder="e.g., 28" oninput="trSuggestES()">
+      <span class="hint">If set (and no cutoff date), uses the last N days as the validation set.</span>
+    </div>
+    <div class="field">
+      <label for="tr_es_rounds">early_stopping_rounds</label>
+      <div class="inline-fields" style="gap:8px;align-items:center">
+        <input id="tr_es_rounds" name="early_stopping_rounds" type="number" min="10" step="1" value="36" placeholder="e.g., 36">
+        <button type="button" class="btn secondary nowrap" onclick="trSuggestES()">Auto-suggest</button>
+      </div>
+      <span class="hint">Click <em>Auto-suggest</em> to fill a value ≈10–15% of <code>n_estimators</code>, clamped to 30–100. Requires a validation split.</span>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="field">
+      <div class="switch">
+        <input type="checkbox" id="tr_verbose_eval">
+        <label for="tr_verbose_eval">Verbose evaluation logging</label>
+      </div>
+      <span class="hint">If enabled, XGBoost prints validation RMSE every few rounds.</span>
+    </div>
+    <div class="field">
+      <div class="switch">
+        <input type="checkbox" id="tr_single_thread">
+        <label for="tr_single_thread">Enforce single-thread env</label>
+      </div>
+      <span class="hint">Helps reproducibility across machines (slower). Also set <code>nthread</code>=1 for full determinism.</span>
+    </div>
+  </div>
+
+  <div style="margin-top:10px;display:flex;gap:10px;align-items:center">
+    <button id="train-btn" class="btn" type="submit">Start training</button>
+    <button class="btn secondary" type="button" onclick="resetTrainingForm()">Reset</button>
+    <span id="train-status" class="hint" style="margin-left:8px" aria-live="polite"></span>
+  </div>
+
+</form>
+
+<!-- output panel -->
+<details open style="margin-top:16px">
+  <summary>Last response</summary>
+  <pre id="train-log" style="white-space:pre-wrap;background:var(--panel);padding:12px;border-radius:8px;border:1px solid var(--border);min-height:60px">—</pre>
+</details>
+
+<!-- tips -->
+<details style="margin-top:12px">
+  <summary>Speed ↔ Quality tips</summary>
+  <ul class="hint" style="margin-top:8px">
+    <li>Use <code>global</code> mode first. Switch to <code>per_group</code> only for tricky segments.</li>
+    <li><code>hist</code> tree method is much faster than <code>exact</code> on CPUs.</li>
+    <li>Increase <code>n_estimators</code> (e.g., 600) for higher capacity; pair with <code>learning_rate</code> 0.03–0.05.</li>
+    <li>Use a recent <strong>validation cutoff</strong> (e.g., last 10–20% of dates) and set <strong>early_stopping_rounds</strong> (≈30–100) so training stops when validation RMSE plateaus. You can also click <em>Auto-suggest</em> to pick a reasonable value from your current <code>n_estimators</code>.</li>
+    <li>For reproducibility across machines, enable “Enforce single-thread env” and fix <code>nthread</code>=1.</li>
+  </ul>
+</details>
+</section>
+{% endblock %}
+
+{% block scripts %}
+  {% include "partials/scripts.html" %}
+{% endblock %}

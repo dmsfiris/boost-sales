@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>{% block title %}Sales Forecast{% endblock %}</title>
+
+  <!-- Global CSS -->
+  <link rel="stylesheet" href="/static/css/main.css"/>
+
+  {% block head %}{% endblock %}
+</head>
+<body>
+  <div class="container">
+	<header class="header">
+	  <div class="logo"><a href="/"><span>SF</span></a></div>
+	  <div class="hgroup">
+		<h1>{% block header_title %}Sales Forecast{% endblock %}</h1>
+		<p class="subtitle">{% block header_subtitle %}Fast, dependable forecasting toolkit{% endblock %}</p>
+	  </div>
+	</header>
+
+    {% block content %}{% endblock %}
+
+    <footer class="footer">
+      <span>&copy; {{ year or 2025 }}</span>
+      <span>Built by <a href="https://aspectsoft.gr" target="_blank" rel="noopener">AspectSoft</a></span>
+    </footer>
+  </div>
+
+  <!-- Global JS -->
+  <script src="/static/js/main.js" defer></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

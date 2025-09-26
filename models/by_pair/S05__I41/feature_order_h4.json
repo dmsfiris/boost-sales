@@ -1,0 +1,1 @@
+["price", "promo", "year", "quarter", "month", "day", "dow", "is_weekend", "sales_lag_1", "sales_lag_7", "sales_lag_14", "sales_lag_28", "sales_roll_mean_7", "sales_roll_mean_28", "price_roll_7", "price_roll_28", "is_hol", "price_h4", "promo_h4", "price_ratio_h4"]

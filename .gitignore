@@ -70,7 +70,18 @@ static/build/
 /src/legacy/
 
 # Model artifacts
-models/
+#models/
+!models/.gitkeep
+
+# XGBoost / model dumps (anywhere)
 *.json.model
 *.ubj
+*.bst
+*.xgb.json
+
+# Python serializations
 *.pkl
+*.joblib
+
+# If you also want to ignore JSON files only inside models/ (but keep JSON elsewhere):
+models/**/*.json

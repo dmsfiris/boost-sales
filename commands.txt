@@ -37,7 +37,7 @@ Remove-Item -Recurse -Force .\models\by_store -ErrorAction SilentlyContinue
 #              increase --nthread to use more CPU.
 
 # (A) Global retrain – balanced (default config speed/quality)
-python -m sales_forecast.cli train `
+python -m boost_sales.cli train `
   --data-csv .\data\sales.csv `
   --models-dir .\models `
   --horizons '1-7' `
@@ -46,7 +46,7 @@ python -m sales_forecast.cli train `
   --verbose-eval 0
 
 # (B) Global retrain – reproducible (single-thread, slower, stable)
-python -m sales_forecast.cli train `
+python -m boost_sales.cli train `
   --data-csv .\data\sales.csv `
   --models-dir .\models `
   --horizons '1-7' `
@@ -56,7 +56,7 @@ python -m sales_forecast.cli train `
   --enforce-single-thread-env
 
 # (C) Global retrain – quick smoke run (use fewer horizons)
-python -m sales_forecast.cli train `
+python -m boost_sales.cli train `
   --data-csv .\data\sales.csv `
   --models-dir .\models `
   --horizons '1-3' `
@@ -77,7 +77,7 @@ python -m sales_forecast.cli train `
 
 # (A) Per (store,item) pair
 Remove-Item -Recurse -Force .\models\by_pair -ErrorAction SilentlyContinue
-python -m sales_forecast.cli train-per-group pair `
+python -m boost_sales.cli train-per-group pair `
   --data-csv .\data\sales.csv `
   --models-dir .\models `
   --horizons '1-7' `
@@ -87,7 +87,7 @@ python -m sales_forecast.cli train-per-group pair `
 
 # (B) Per item
 Remove-Item -Recurse -Force .\models\by_item -ErrorAction SilentlyContinue
-python -m sales_forecast.cli train-per-group item `
+python -m boost_sales.cli train-per-group item `
   --data-csv .\data\sales.csv `
   --models-dir .\models `
   --horizons '1-7' `
@@ -97,7 +97,7 @@ python -m sales_forecast.cli train-per-group item `
 
 # (C) Per store
 Remove-Item -Recurse -Force .\models\by_store -ErrorAction SilentlyContinue
-python -m sales_forecast.cli train-per-group store `
+python -m boost_sales.cli train-per-group store `
   --data-csv .\data\sales.csv `
   --models-dir .\models `
   --horizons '1-7' `
@@ -114,7 +114,7 @@ python -m sales_forecast.cli train-per-group store `
 # For 'single': provide store_id and item_id; for last_n_days: provide --n-days; etc.
 
 # (A) Single target (store+item), horizons 1-7
-python -m sales_forecast.cli forecast `
+python -m boost_sales.cli forecast `
   --data-csv .\data\sales.csv `
   --models-dir .\models `
   --out-csv .\preds_single.csv `
@@ -127,7 +127,7 @@ python -m sales_forecast.cli forecast `
   --item-id I01
 
 # (B) Latest per (store,item) pair across the dataset
-python -m sales_forecast.cli forecast `
+python -m boost_sales.cli forecast `
   --data-csv .\data\sales.csv `
   --models-dir .\models `
   --out-csv .\preds_latest_pairs.csv `
@@ -136,7 +136,7 @@ python -m sales_forecast.cli forecast `
   --hol-country US
 
 # (C) Last N days (all rows within trailing window)
-python -m sales_forecast.cli forecast `
+python -m boost_sales.cli forecast `
   --data-csv .\data\sales.csv `
   --models-dir .\models `
   --out-csv .\preds_last7.csv `
@@ -148,33 +148,17 @@ python -m sales_forecast.cli forecast `
 # -----------------------------------------------------------------------------
 # 4) SERVE WEB API + UI
 # -----------------------------------------------------------------------------
-# Start FastAPI (Swagger + HTML UI). If you have a demo CSV, pass it so the UI can run
-# without uploads. Horizons control which horizons are exposed by the service.
 
-# (A) Serve with demo CSV
-python -m sales_forecast.cli serve-web `
-  --models-dir .\models `
-  --data-csv .\data\sales.csv `
-  --horizons '1-7' `
-  --hol-country US `
+python -m boost_sales.cli serve-web `
   --host 127.0.0.1 `
   --port 8000 `
   --reload
-
-# (B) Serve without demo CSV (UI will expect uploads)
-python -m sales_forecast.cli serve-web `
-  --models-dir .\models `
-  --horizons '1-7' `
-  --hol-country US `
-  --host 127.0.0.1 `
-  --port 8000
-
 
 # -----------------------------------------------------------------------------
 # 5) DATA GENERATION HELPERS (OPTIONAL)
 # -----------------------------------------------------------------------------
 # Synthetic dataset
-python -m sales_forecast.cli generate-data `
+python -m boost_sales.cli generate-data `
   --mode synthetic `
   --out-csv .\data\sales.csv `
   --n-stores 5 `
@@ -184,7 +168,7 @@ python -m sales_forecast.cli generate-data `
   --seed 123
 
 # From a flat table (example placeholders)
-# python -m sales_forecast.cli generate-data `
+# python -m boost_sales.cli generate-data `
 #   --mode from-flat `
 #   --out-csv .\data\sales.csv `
 #   --flat-csv .\path\to\flat.csv `

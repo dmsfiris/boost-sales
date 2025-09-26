@@ -407,16 +407,6 @@ def cmd_forecast(
 # ----------------------------
 @app.command("serve-web")
 def cmd_serve_web(
-    models_dir: Annotated[Path, typer.Option(help="Directory with trained models.")] = ...,
-    data_csv: Annotated[
-        Optional[Path], typer.Option(help="(Optional) Path to sales CSV for feature parity / demo.")
-    ] = None,
-    hol_country: Annotated[str, typer.Option(help="Holidays country code to use.")] = "US",
-    hol_subdiv: Annotated[Optional[str], typer.Option(help="Holidays subdivision.")] = None,
-    horizons: Annotated[
-        Optional[str],
-        typer.Option(help="Horizons the service should expose (e.g. '1-7'). If omitted, uses config default."),
-    ] = None,
     host: Annotated[str, typer.Option(help="Host to bind.")] = "127.0.0.1",
     port: Annotated[int, typer.Option(help="Port to bind.")] = 8000,
     reload: Annotated[bool, typer.Option(help="Reload on code changes (dev only).")] = False,
@@ -424,39 +414,50 @@ def cmd_serve_web(
     """
     Start the FastAPI web service (Swagger + web UI).
 
-    We start uvicorn with an import string ('boost_sales.api.server:app') in both
-    reload and non-reload modes. The server builds the ASGI app from environment vars.
+    Configuration is resolved from environment variables (with safe defaults):
+      - SF_MODELS_DIR   (default: ./models, auto-created)
+      - SF_DATA_CSV     (optional; auto-detected as ./data/sales.csv if it exists)
+      - SF_HOL_COUNTRY  (default: US)
+      - SF_HOL_SUBDIV   (optional)
+      - SF_HORIZONS     (default: from AppConfig if unset)
     """
-    # Resolve horizons now for env export
-    cfg = AppConfig()
-    hs = parse_horizons_opt(horizons, cfg.train.horizons)
-
-    # Optional demo CSV default (if not provided)
-    if data_csv is None:
-        demo = Path("data/sales.csv")
-        if demo.exists():
-            data_csv = demo
-
     try:
         import uvicorn  # noqa: F401
     except Exception as e:
         raise RuntimeError("Web dependencies missing. Install with:  pip install '.[webui]'") from e
 
-    # Export config to env for the ASGI app builder in boost_sales.api.server
+    cfg = AppConfig()
+
+    # Resolve MODELS_DIR: env -> ./models
+    models_dir = Path(os.getenv("SF_MODELS_DIR") or "./models")
+    models_dir.mkdir(parents=True, exist_ok=True)
     os.environ["SF_MODELS_DIR"] = str(models_dir)
-    if data_csv is not None:
-        os.environ["SF_DATA_CSV"] = str(data_csv)
+
+    # Resolve DATA_CSV: keep existing env if set; else auto-detect ./data/sales.csv; else unset
+    data_env = os.getenv("SF_DATA_CSV")
+    if data_env:
+        os.environ["SF_DATA_CSV"] = data_env  # keep existing
     else:
-        os.environ.pop("SF_DATA_CSV", None)
-    os.environ["SF_HOL_COUNTRY"] = hol_country
+        demo_csv = Path("data/sales.csv")
+        if demo_csv.exists():
+            os.environ["SF_DATA_CSV"] = str(demo_csv)
+        else:
+            os.environ.pop("SF_DATA_CSV", None)
+
+    # Holidays: env -> default
+    os.environ["SF_HOL_COUNTRY"] = os.getenv("SF_HOL_COUNTRY") or "US"
+    hol_subdiv = os.getenv("SF_HOL_SUBDIV")
     if hol_subdiv:
         os.environ["SF_HOL_SUBDIV"] = hol_subdiv
     else:
         os.environ.pop("SF_HOL_SUBDIV", None)
-    os.environ["SF_HORIZONS"] = ",".join(map(str, hs))
 
-    import uvicorn
+    # Horizons: use env if provided; else from AppConfig default list
+    if not os.getenv("SF_HORIZONS"):
+        hs = cfg.train.horizons  # e.g., [1,2,3,4,5,6,7]
+        os.environ["SF_HORIZONS"] = ",".join(map(str, hs))
 
+    # Run the ASGI app defined as an import string
     uvicorn.run(
         "boost_sales.api.server:app",
         host=host,
@@ -464,7 +465,6 @@ def cmd_serve_web(
         reload=reload,
         factory=False,
     )
-
 
 if __name__ == "__main__":
     app()

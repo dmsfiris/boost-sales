@@ -1,3 +1,4 @@
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -32,6 +33,13 @@ def _order_cols(df: pd.DataFrame, sch: Schema) -> pd.DataFrame:
     return df[present]
 
 
+def _clip_future_dates(df: pd.DataFrame, date_col: str, allow_future: bool) -> pd.DataFrame:
+    if allow_future:
+        return df
+    today = pd.Timestamp.today().normalize()
+    return df.loc[df[date_col] <= today].copy()
+
+
 # -------------------------------
 # Synthetic panel (legacy-like)
 # -------------------------------
@@ -43,17 +51,35 @@ def generate_synthetic(
     periods: int = 365,
     seed: int = 42,
     schema: Optional[Schema] = None,
+    allow_future: bool = False,
 ) -> pd.DataFrame:
     """
     Synthetic daily panel matching legacy scales:
       price ~ 100..600 (2 decimals), promo in {0,1} ~10%, sales integer.
+    When allow_future=False (default), dates after 'today' are clipped.
     """
     schema = schema or Schema()
 
     rng = np.random.default_rng(seed)
-    dates = pd.date_range(start=start, periods=periods, freq="D")
+    start_ts = pd.Timestamp(start).normalize()
+    today = pd.Timestamp.today().normalize()
+
+    # Compute the intended end date then clip to today if needed
+    intended_end = start_ts + pd.Timedelta(days=periods - 1)
+    end_ts = min(intended_end, today)
+    if end_ts < start_ts:
+        # nothing to generate
+        dates = pd.DatetimeIndex([], name=schema.date)
+    else:
+        actual_periods = (end_ts - start_ts).days + 1
+        dates = pd.date_range(start=start_ts, periods=actual_periods, freq="D")
+
     stores = [f"S{i:02d}" for i in range(1, n_stores + 1)]
     items = [f"I{i:02d}" for i in range(1, n_items + 1)]
+
+    if len(dates) == 0:
+        # Return empty schema-aligned frame
+        return pd.DataFrame(columns=[schema.date, schema.store, schema.item, schema.price, schema.promo, schema.sales])
 
     idx = pd.MultiIndex.from_product(
         [stores, items, dates],
@@ -92,6 +118,8 @@ def generate_synthetic(
         .reset_index(drop=True)
     )
 
+    # Clip again (no-op if already clipped) when allow_future=False
+    out = _clip_future_dates(out, schema.date, allow_future=allow_future)
     return _order_cols(out, schema)
 
 
@@ -103,6 +131,7 @@ def generate_from_flat(
     *,
     schema: Optional[Schema] = None,
     parse_dates: bool = True,
+    allow_future: bool = False,
 ) -> pd.DataFrame:
     schema = schema or Schema()
 
@@ -128,6 +157,7 @@ def generate_from_flat(
         df[schema.sales] = pd.to_numeric(df[schema.sales], errors="coerce").round(0).astype("int64")
 
     df = df.sort_values([schema.store, schema.item, schema.date]).reset_index(drop=True)
+    df = _clip_future_dates(df, schema.date, allow_future=allow_future)
     return _order_cols(df, schema)
 
 
@@ -173,6 +203,7 @@ def generate_from_transactions(
     promo_col_name: Optional[str] = None,
     promo_roll_window: int = 28,
     promo_drop_threshold: float = 0.10,
+    allow_future: bool = False,
 ) -> pd.DataFrame:
     schema = schema or Schema()
 
@@ -248,6 +279,7 @@ def generate_from_transactions(
 
     panel = pd.concat([g_price, g_promo, g_sales], axis=1).reset_index()
     panel = panel.sort_values([schema.store, schema.item, schema.date]).reset_index(drop=True)
+    panel = _clip_future_dates(panel, schema.date, allow_future=allow_future)
     return _order_cols(panel, schema)
 
 
@@ -284,6 +316,7 @@ def build_dataset(
     promo_col_name: Optional[str] = None,
     promo_roll_window: int = 28,
     promo_drop_threshold: float = 0.10,
+    allow_future: bool = False,
 ) -> pd.DataFrame:
     """
     Build a training-ready panel matching legacy layout:
@@ -310,11 +343,12 @@ def build_dataset(
             periods=periods,
             seed=seed,
             schema=schema,
+            allow_future=allow_future,
         )
     if mode == "from-flat":
         if not flat_csv:
             raise ValueError("mode='from-flat' requires flat_csv")
-        return generate_from_flat(flat_csv, schema=schema)
+        return generate_from_flat(flat_csv, schema=schema, allow_future=allow_future)
     if mode == "from-transactions":
         if not tx_csv:
             raise ValueError("mode='from-transactions' requires tx_csv")
@@ -328,15 +362,100 @@ def build_dataset(
             promo_col_name=promo_col_name,
             promo_roll_window=promo_roll_window,
             promo_drop_threshold=promo_drop_threshold,
+            allow_future=allow_future,
         )
     raise ValueError("mode must be one of: synthetic | from-flat | from-transactions")
 
 
 def write_dataset(df: pd.DataFrame, out_csv: Path) -> Path:
-    """
-    Write CSV (keep integers for `sales`; `price` already rounded to 2 decimals).
-    """
+    """Write CSV (keep integers for `sales`; `price` already rounded to 2 decimals)."""
     out_csv = Path(out_csv)
     out_csv.parent.mkdir(parents=True, exist_ok=True)
     _order_cols(df, Schema()).to_csv(out_csv, index=False)
     return out_csv
+
+
+# --------------------------------
+# CLI entry point
+# --------------------------------
+def _parse_args():
+    import argparse
+
+    p = argparse.ArgumentParser(
+        description="Generate or build a sales panel CSV compatible with boost_sales."
+    )
+    sub = p.add_subparsers(dest="mode", required=True)
+
+    # synthetic
+    ps = sub.add_parser("synthetic", help="Generate a synthetic dataset")
+    ps.add_argument("--out", type=Path, default=Path("./data/sales.csv"))
+    ps.add_argument("--stores", type=int, default=5)
+    ps.add_argument("--items", type=int, default=50)
+    ps.add_argument("--days", type=int, default=365)
+    ps.add_argument("--start", type=str, default="2024-01-01")
+    ps.add_argument("--seed", type=int, default=42)
+    ps.add_argument("--allow-future", action="store_true", help="Do not clip future dates (default: clipped)")
+
+    # from-flat
+    pf = sub.add_parser("from-flat", help="Use an existing flat panel CSV")
+    pf.add_argument("--flat-csv", type=Path, required=True)
+    pf.add_argument("--out", type=Path, default=Path("./data/sales.csv"))
+    pf.add_argument("--parse-dates", action="store_true")
+    pf.add_argument("--allow-future", action="store_true", help="Do not clip future dates (default: clipped)")
+
+    # from-transactions
+    pt = sub.add_parser("from-transactions", help="Build from raw transactions (lines)")
+    pt.add_argument("--tx-csv", type=Path, required=True)
+    pt.add_argument("--out", type=Path, default=Path("./data/sales.csv"))
+    pt.add_argument("--sales-as", choices=["sum", "count"], default="sum")
+    pt.add_argument("--price-strategy", choices=["weighted_avg", "mean", "median", "last"], default="weighted_avg")
+    pt.add_argument("--promo-strategy", choices=["column", "price_drop_vs_roll"], default="column")
+    pt.add_argument("--promo-col-name", type=str, default=None)
+    pt.add_argument("--promo-roll-window", type=int, default=28)
+    pt.add_argument("--promo-drop-threshold", type=float, default=0.10)
+    pt.add_argument("--parse-dates", action="store_true")
+    pt.add_argument("--allow-future", action="store_true", help="Do not clip future dates (default: clipped)")
+    return p.parse_args()
+
+
+def main():
+    args = _parse_args()
+
+    if args.mode == "synthetic":
+        df = generate_synthetic(
+            n_stores=args.stores,
+            n_items=args.items,
+            start=str(args.start),
+            periods=args.days,
+            seed=args.seed,
+            allow_future=args.allow_future,
+        )
+        path = write_dataset(df, args.out)
+        print(f"Wrote synthetic dataset to: {path}")
+
+    elif args.mode == "from-flat":
+        df = generate_from_flat(args.flat_csv, parse_dates=args.parse_dates, allow_future=args.allow_future)
+        path = write_dataset(df, args.out)
+        print(f"Wrote panel dataset to: {path}")
+
+    elif args.mode == "from-transactions":
+        df = generate_from_transactions(
+            args.tx_csv,
+            sales_as=args.sales_as,
+            price_strategy=args.price_strategy,
+            promo_strategy=args.promo_strategy,
+            promo_col_name=args.promo_col_name,
+            promo_roll_window=args.promo_roll_window,
+            promo_drop_threshold=args.promo_drop_threshold,
+            parse_dates=args.parse_dates,
+            allow_future=args.allow_future,
+        )
+        path = write_dataset(df, args.out)
+        print(f"Wrote panel dataset to: {path}")
+
+    else:
+        raise SystemExit("Unknown mode")
+
+
+if __name__ == "__main__":
+    main()

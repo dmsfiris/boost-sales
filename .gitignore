@@ -68,3 +68,9 @@ static/build/
 
 # ignore legacy code
 /src/legacy/
+
+# Model artifacts
+models/
+*.json.model
+*.ubj
+*.pkl

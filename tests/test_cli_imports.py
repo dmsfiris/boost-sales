@@ -1,1 +1,1 @@
-def test_import(): import sales_forecast; assert True
+def test_import(): import boost_sales; assert True

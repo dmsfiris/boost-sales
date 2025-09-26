@@ -49,11 +49,11 @@ htmlcov/
 *.secrets
 
 # --- Project-specific generated data/outputs ---
-# keep sample data out of VCS (adjust if data/sales.csv is intentionally tracked)
-data/*.csv
-data/*.parquet
-data/*.xlsx
-data/*.json
+# Ignore everything in data/, but allow CSVs and a couple keepers
+data/**
+!data/*.csv
+!data/.gitkeep
+!data/README.md
 
 # run outputs & reports
 preds*.csv
@@ -65,3 +65,6 @@ src/**/__pycache__/
 
 # --- Frontend/static build outputs (if added later) ---
 static/build/
+
+# ignore legacy code
+/src/legacy/

@@ -3,26 +3,25 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Optional, List
+from typing import Annotated, List, Optional
 
 import pandas as pd
 import typer
 
+from boost_sales.api.core.controls import (
+    add_horizon_controls,  # builds price_h{h}, promo_h{h}, price_ratio_h{h}
+    assume_no_change_fill,  # fills *_h{h} safely from current values when future plan unknown
+)
+from boost_sales.api.core.features import prepare_features as core_prepare_features
+from boost_sales.api.core.horizons import parse_horizons_opt  # single source of truth
+from boost_sales.api.core.selectors import select_rows
 from boost_sales.config import AppConfig
-from boost_sales.pipeline.train import train_global, train_per_group
 from boost_sales.data.io import load_sales_csv
 from boost_sales.models.xgb import load_booster
-
-# ---- unified core (single source of truth) ----
-from boost_sales.api.core.horizons import parse_horizons_opt
-from boost_sales.api.core.controls import (
-    add_horizon_controls,      # builds price_h{h}, promo_h{h}, price_ratio_h{h}
-    assume_no_change_fill,     # fills *_h{h} safely from current values when future plan unknown
-)
-from boost_sales.api.core.selectors import select_rows
-from boost_sales.api.core.features import prepare_features as core_prepare_features
+from boost_sales.pipeline.train import train_global, train_per_group
 
 app = typer.Typer(help="Sales Forecast CLI", add_completion=False)
+
 
 # ----------------------------
 # Shared helpers
@@ -39,12 +38,14 @@ def _schema_kwargs(cfg: AppConfig) -> dict:
         promo_col=c.promo,
     )
 
+
 # ----------------------------
 # Shared feature prep (parity with training)
 # ----------------------------
 def _prepare_features(df: pd.DataFrame, cfg: AppConfig) -> pd.DataFrame:
     """Use the single source of truth for feature engineering."""
     return core_prepare_features(df, cfg)
+
 
 def _format_sales(yhat, cfg: AppConfig) -> pd.Series:
     """
@@ -59,68 +60,54 @@ def _format_sales(yhat, cfg: AppConfig) -> pd.Series:
     decimals = int(cfg.output.decimal_places)
     return s.round(decimals).astype("float64")
 
+
 # ----------------------------
 # generate-data  (lazy import to avoid hard dep)
 # ----------------------------
 @app.command("generate-data")
 def cmd_generate_data(
     # mode
-    mode: str = typer.Option(
-        "synthetic",
-        help="Generation mode: 'synthetic', 'from-flat', or 'from-tx'.",
-    ),
-    out_csv: Path = typer.Option(..., help="Where to write the generated CSV."),
+    mode: Annotated[str, typer.Option(help="Generation mode: 'synthetic', 'from-flat', or 'from-tx'.")] = "synthetic",
+    out_csv: Annotated[Path, typer.Option(help="Where to write the generated CSV.")] = ...,
     # schema overrides (optional)
-    store_col: Optional[str] = typer.Option(None, help="Override store column name."),
-    item_col: Optional[str] = typer.Option(None, help="Override item column name."),
-    sales_col: Optional[str] = typer.Option(None, help="Override sales column name."),
-    price_col: Optional[str] = typer.Option(None, help="Override price column name."),
-    promo_col: Optional[str] = typer.Option(None, help="Override promo column name."),
-    date_col: Optional[str] = typer.Option(None, help="Override date column name."),
-    unit_price_col: Optional[str] = typer.Option(None, help="Override unit price column."),
-    qty_col: Optional[str] = typer.Option(None, help="Override quantity column."),
-    promo_col_name: Optional[str] = typer.Option(
-        None, help="When promo_strategy='column', the source promo column name."
-    ),
+    store_col: Annotated[Optional[str], typer.Option(help="Override store column name.")] = None,
+    item_col: Annotated[Optional[str], typer.Option(help="Override item column name.")] = None,
+    sales_col: Annotated[Optional[str], typer.Option(help="Override sales column name.")] = None,
+    price_col: Annotated[Optional[str], typer.Option(help="Override price column name.")] = None,
+    promo_col: Annotated[Optional[str], typer.Option(help="Override promo column name.")] = None,
+    date_col: Annotated[Optional[str], typer.Option(help="Override date column name.")] = None,
+    unit_price_col: Annotated[Optional[str], typer.Option(help="Override unit price column.")] = None,
+    qty_col: Annotated[Optional[str], typer.Option(help="Override quantity column.")] = None,
+    promo_col_name: Annotated[
+        Optional[str], typer.Option(help="When promo_strategy='column', source promo column.")
+    ] = None,
     # synthetic args
-    n_stores: int = typer.Option(10, help="(synthetic) Number of stores."),
-    n_items: int = typer.Option(50, help="(synthetic) Number of items."),
-    start: str = typer.Option("2024-01-01", help="(synthetic) Start date YYYY-MM-DD."),
-    periods: int = typer.Option(180, help="(synthetic) Number of daily periods."),
-    seed: int = typer.Option(123, help="(synthetic) RNG seed."),
+    n_stores: Annotated[int, typer.Option(help="(synthetic) Number of stores.")] = 10,
+    n_items: Annotated[int, typer.Option(help="(synthetic) Number of items.")] = 50,
+    start: Annotated[str, typer.Option(help="(synthetic) Start date YYYY-MM-DD.")] = "2024-01-01",
+    periods: Annotated[int, typer.Option(help="(synthetic) Number of daily periods.")] = 180,
+    seed: Annotated[int, typer.Option(help="(synthetic) RNG seed.")] = 123,
     # from-flat / from-tx args
-    flat_csv: Optional[Path] = typer.Option(
-        None, help="(from-flat) Path to a flat CSV to aggregate."
-    ),
-    tx_csv: Optional[Path] = typer.Option(
-        None, help="(from-tx) Path to a transactions CSV to aggregate."
-    ),
-    sales_as: str = typer.Option(
-        "sum",
-        help="(from-flat/tx) Aggregate measure for 'sales' (e.g., 'sum' or 'mean').",
-    ),
-    price_strategy: str = typer.Option(
-        "weighted_avg",
-        help="(from-flat/tx) How to derive price (e.g., 'weighted_avg', 'mean').",
-    ),
-    price_round_to: int = typer.Option(
-        2, help="(from-flat/tx) Round derived price to this many decimals."
-    ),
-    promo_strategy: str = typer.Option(
-        "column",
-        help="(from-flat/tx) How to derive promo (e.g., 'column', 'rolling').",
-    ),
-    promo_roll_window: int = typer.Option(
-        28, help="(from-flat/tx) Rolling window for promo derivation."
-    ),
-    promo_drop_threshold: float = typer.Option(
-        0.10, help="(from-flat/tx) Drop rows with promo share below this fraction."
-    ),
-    group_extra: List[str] = typer.Option(
-        [],
-        "--group-extra",
-        help="(from-flat/tx) Extra grouping columns (repeatable).",
-    ),
+    flat_csv: Annotated[Optional[Path], typer.Option(help="(from-flat) Path to a flat CSV to aggregate.")] = None,
+    tx_csv: Annotated[Optional[Path], typer.Option(help="(from-tx) Path to a transactions CSV to aggregate.")] = None,
+    sales_as: Annotated[
+        str, typer.Option(help="(from-flat/tx) Aggregate for 'sales' (e.g., 'sum' or 'mean').")
+    ] = "sum",
+    price_strategy: Annotated[
+        str, typer.Option(help="(from-flat/tx) Price derivation (e.g., 'weighted_avg', 'mean').")
+    ] = "weighted_avg",
+    price_round_to: Annotated[int, typer.Option(help="(from-flat/tx) Round derived price to this many decimals.")] = 2,
+    promo_strategy: Annotated[
+        str, typer.Option(help="(from-flat/tx) Promo derivation (e.g., 'column', 'rolling').")
+    ] = "column",
+    promo_roll_window: Annotated[int, typer.Option(help="(from-flat/tx) Rolling window for promo derivation.")] = 28,
+    promo_drop_threshold: Annotated[
+        float, typer.Option(help="(from-flat/tx) Drop rows with promo share below this fraction.")
+    ] = 0.10,
+    group_extra: Annotated[
+        Optional[List[str]],
+        typer.Option("--group-extra", help="(from-flat/tx) Extra grouping columns (repeatable)."),
+    ] = None,
 ):
     """
     Generate a sales dataset and write it as CSV.
@@ -163,43 +150,39 @@ def cmd_generate_data(
         promo_strategy=promo_strategy,
         promo_roll_window=promo_roll_window,
         promo_drop_threshold=promo_drop_threshold,
-        group_extra=group_extra,
+        group_extra=group_extra or [],
     )
 
     write_dataset(df, out_csv)
     typer.echo(f"✅ Wrote dataset: {out_csv}")
+
 
 # ----------------------------
 # train (global)
 # ----------------------------
 @app.command("train")
 def cmd_train(
-    data_csv: Path = typer.Option(..., help="Path to sales CSV."),
-    models_dir: Path = typer.Option(..., help="Directory to write models."),
-    hol_country: str = typer.Option("US", help="Holidays country code, e.g. 'US'."),
-    hol_subdiv: Optional[str] = typer.Option(
-        None, help="Holidays subdivision (e.g., 'CA' for California)."
-    ),
-    horizons: Optional[str] = typer.Option(
-        None,
-        help="List or range of horizons, e.g. '1-7' or '1,2,3,4'. "
-             "If omitted, uses config default.",
-    ),
+    data_csv: Annotated[Path, typer.Option(help="Path to sales CSV.")] = ...,
+    models_dir: Annotated[Path, typer.Option(help="Directory to write models.")] = ...,
+    hol_country: Annotated[str, typer.Option(help="Holidays country code, e.g. 'US'.")] = "US",
+    hol_subdiv: Annotated[Optional[str], typer.Option(help="Holidays subdivision (e.g., 'CA' for California).")] = None,
+    horizons: Annotated[
+        Optional[str],
+        typer.Option(help="Horizons like '1-7' or '1,2,3,4'. If omitted, uses config default."),
+    ] = None,
     # ---- training speed/quality knobs ----
-    nthread: Optional[int] = typer.Option(None, help="XGBoost nthread parameter (None = use many threads)."),
-    verbose_eval: int = typer.Option(0, help="XGBoost training verbosity (0/1)."),
-    enforce_single_thread_env: bool = typer.Option(
-        False, help="Set single-thread env vars (OMP, MKL) for reproducibility."
-    ),
-    valid_cutoff_date: Optional[str] = typer.Option(
-        None, help="YYYY-MM-DD. If provided, use as time-based validation split."
-    ),
-    valid_tail_days: Optional[int] = typer.Option(
-        None, help="If set (e.g., 28), use last N days as validation when no cutoff date is given."
-    ),
-    early_stopping_rounds: Optional[int] = typer.Option(
-        None, help="Enable early stopping if a validation split is present (e.g., 50)."
-    ),
+    nthread: Annotated[Optional[int], typer.Option(help="XGBoost nthread (None = use many threads).")] = None,
+    verbose_eval: Annotated[int, typer.Option(help="XGBoost training verbosity (0/1).")] = 0,
+    enforce_single_thread_env: Annotated[
+        bool, typer.Option(help="Set single-thread env vars (OMP, MKL) for reproducibility.")
+    ] = False,
+    valid_cutoff_date: Annotated[Optional[str], typer.Option(help="YYYY-MM-DD. Time-based validation split.")] = None,
+    valid_tail_days: Annotated[
+        Optional[int], typer.Option(help="If set (e.g., 28), use last N days as validation.")
+    ] = None,
+    early_stopping_rounds: Annotated[
+        Optional[int], typer.Option(help="Enable early stopping if a validation split is present.")
+    ] = None,
 ):
     """
     Train one global model per horizon and save in models_dir.
@@ -224,38 +207,34 @@ def cmd_train(
     train_global(cfg)
     typer.echo(f"✅ Trained horizons {cfg.train.horizons} → {models_dir}")
 
+
 # ----------------------------
 # train-per-group
 # ----------------------------
 @app.command("train-per-group")
 def cmd_train_per_group(
-    scope: str = typer.Argument(
-        ..., help="Grouping scope: 'pair' (store+item), 'item', or 'store'."
-    ),
-    data_csv: Path = typer.Option(..., help="Path to sales CSV."),
-    models_dir: Path = typer.Option(..., help="Root models directory."),
-    hol_country: str = typer.Option("US", help="Holidays country code."),
-    hol_subdiv: Optional[str] = typer.Option(None, help="Holidays subdivision."),
-    horizons: Optional[str] = typer.Option(
-        None,
-        help="List or range of horizons, e.g. '1-7' or '1,2,3,4'. "
-             "If omitted, uses config default.",
-    ),
+    scope: Annotated[str, typer.Argument(help="Grouping scope: 'pair' (store+item), 'item', or 'store'.")] = ...,
+    data_csv: Annotated[Path, typer.Option(help="Path to sales CSV.")] = ...,
+    models_dir: Annotated[Path, typer.Option(help="Root models directory.")] = ...,
+    hol_country: Annotated[str, typer.Option(help="Holidays country code.")] = "US",
+    hol_subdiv: Annotated[Optional[str], typer.Option(help="Holidays subdivision.")] = None,
+    horizons: Annotated[
+        Optional[str],
+        typer.Option(help="Horizons like '1-7' or '1,2,3,4'. If omitted, uses config default."),
+    ] = None,
     # ---- training speed/quality knobs ----
-    nthread: Optional[int] = typer.Option(None, help="XGBoost nthread parameter (None = use many threads)."),
-    verbose_eval: int = typer.Option(0, help="XGBoost training verbosity (0/1)."),
-    enforce_single_thread_env: bool = typer.Option(
-        False, help="Set single-thread env vars (OMP, MKL) for reproducibility."
-    ),
-    valid_cutoff_date: Optional[str] = typer.Option(
-        None, help="YYYY-MM-DD. If provided, use as time-based validation split."
-    ),
-    valid_tail_days: Optional[int] = typer.Option(
-        None, help="If set (e.g., 28), use last N days as validation when no cutoff date is given."
-    ),
-    early_stopping_rounds: Optional[int] = typer.Option(
-        None, help="Enable early stopping if a validation split is present (e.g., 50)."
-    ),
+    nthread: Annotated[Optional[int], typer.Option(help="XGBoost nthread (None = use many threads).")] = None,
+    verbose_eval: Annotated[int, typer.Option(help="XGBoost training verbosity (0/1).")] = 0,
+    enforce_single_thread_env: Annotated[
+        bool, typer.Option(help="Set single-thread env vars (OMP, MKL) for reproducibility.")
+    ] = False,
+    valid_cutoff_date: Annotated[Optional[str], typer.Option(help="YYYY-MM-DD. Time-based validation split.")] = None,
+    valid_tail_days: Annotated[
+        Optional[int], typer.Option(help="If set (e.g., 28), use last N days as validation.")
+    ] = None,
+    early_stopping_rounds: Annotated[
+        Optional[int], typer.Option(help="Enable early stopping if a validation split is present.")
+    ] = None,
 ):
     """
     Train models per group (by pair/item/store). Artifacts are nested under models_dir.
@@ -279,45 +258,47 @@ def cmd_train_per_group(
     train_per_group(cfg, scope)
     typer.echo(f"✅ Trained per-{scope} horizons {cfg.train.horizons} under {models_dir}")
 
+
 # ----------------------------
 # forecast (scope-aware)
 # ----------------------------
 @app.command("forecast")
 def cmd_forecast(
-    data_csv: Path = typer.Option(..., help="Path to sales CSV used for features."),
-    models_dir: Path = typer.Option(..., help="Directory with trained models."),
-    out_csv: Path = typer.Option(Path("preds.csv"), help="Where to write predictions."),
+    data_csv: Annotated[Path, typer.Option(help="Path to sales CSV used for features.")] = ...,
+    models_dir: Annotated[Path, typer.Option(help="Directory with trained models.")] = ...,
+    out_csv: Annotated[Optional[Path], typer.Option(help="Where to write predictions.")] = None,
     # scope + params
-    scope: str = typer.Option(
-        "single",
-        help=(
-            "Scope: single | latest_per_pair | latest_per_store | latest_per_item | last_n_days | "
-            "since_date | at_date"
+    scope: Annotated[
+        str,
+        typer.Option(
+            help=(
+                "Scope: single | latest_per_pair | latest_per_store | latest_per_item | "
+                "last_n_days | since_date | at_date"
+            )
         ),
-    ),
-    store_id: Optional[str] = typer.Option(
-        None, help="Store id (required for single/latest_per_store; optional filter for others)."
-    ),
-    item_id: Optional[str] = typer.Option(
-        None, help="Item id (required for single/latest_per_item; optional filter for others)."
-    ),
-    n_days: Optional[int] = typer.Option(None, help="For scope=last_n_days."),
-    since_date: Optional[str] = typer.Option(None, help="YYYY-MM-DD for scope=since_date."),
-    at_date: Optional[str] = typer.Option(None, help="YYYY-MM-DD for scope=at_date."),
+    ] = "single",
+    store_id: Annotated[Optional[str], typer.Option(help="Store id (required for single/latest_per_store).")] = None,
+    item_id: Annotated[Optional[str], typer.Option(help="Item id (required for single/latest_per_item).")] = None,
+    n_days: Annotated[Optional[int], typer.Option(help="For scope=last_n_days.")] = None,
+    since_date: Annotated[Optional[str], typer.Option(help="YYYY-MM-DD for scope=since_date.")] = None,
+    at_date: Annotated[Optional[str], typer.Option(help="YYYY-MM-DD for scope=at_date.")] = None,
     # horizons + features
-    hol_country: str = typer.Option("US", help="Holidays country code to use."),
-    hol_subdiv: Optional[str] = typer.Option(None, help="Holidays subdivision."),
-    horizons: Optional[str] = typer.Option(None, help="Horizons (e.g. '1-7' or '1,2,4')."),
-    assume_no_change: bool = typer.Option(
-        True, help="Assume future price/promo equals latest observed."
-    ),
+    hol_country: Annotated[str, typer.Option(help="Holidays country code to use.")] = "US",
+    hol_subdiv: Annotated[Optional[str], typer.Option(help="Holidays subdivision.")] = None,
+    horizons: Annotated[Optional[str], typer.Option(help="Horizons (e.g. '1-7' or '1,2,4').")] = None,
+    assume_no_change: Annotated[bool, typer.Option(help="Assume future price/promo equals latest observed.")] = True,
     # output formatting overrides (optional)
-    unit_type: Optional[str] = typer.Option(None, help="Format output as 'integer' or 'float' (default from config)."),
-    decimal_places: Optional[int] = typer.Option(None, help="When float, number of decimals (default from config)."),
+    unit_type: Annotated[
+        Optional[str], typer.Option(help="Format output as 'integer' or 'float' (default from config).")
+    ] = None,
+    decimal_places: Annotated[
+        Optional[int], typer.Option(help="When float, number of decimals (default from config).")
+    ] = None,
     # legacy compatibility
-    latest_only: bool = typer.Option(
-        False, help="[Deprecated] If true with scope=single, behaves like scope=latest_per_pair."
-    ),
+    latest_only: Annotated[
+        bool,
+        typer.Option(help="[Deprecated] With scope=single, behaves like scope=latest_per_pair."),
+    ] = False,
 ):
     """
     Load saved boosters and generate predictions for the requested horizons and scope.
@@ -339,7 +320,7 @@ def cmd_forecast(
     # resolve scope (legacy flag -> latest_per_pair)
     scope_resolved = "latest_per_pair" if latest_only and scope == "single" else scope
 
-    # Load + prepare features (same as training)  **FIX: schema-aware loader**
+    # Load + prepare features (same as training)
     df = load_sales_csv(cfg.paths.data_csv, parse_dates=True, **_schema_kwargs(cfg))
     df = _prepare_features(df, cfg)
     c = cfg.columns
@@ -351,7 +332,7 @@ def cmd_forecast(
     # Select rows for the chosen scope
     sub = select_rows(
         df,
-        scope_resolved,  # type: ignore
+        scope_resolved,  # type: ignore[arg-type]
         c,
         store_id=store_id,
         item_id=item_id,
@@ -386,6 +367,7 @@ def cmd_forecast(
             continue
 
         import xgboost as xgb  # local import
+
         dmat = xgb.DMatrix(ready[feats], feature_names=feats)
         yhat = booster.predict(dmat)
 
@@ -397,49 +379,47 @@ def cmd_forecast(
                 "store_id": ready[c.store].astype("string"),
                 "item_id": ready[c.item].astype("string"),
                 "base_date": pd.to_datetime(ready[c.date]).dt.date,
-                "target_date": (
-                    pd.to_datetime(ready[c.date]) + pd.to_timedelta(h, unit="D")
-                ).dt.date,
+                "target_date": (pd.to_datetime(ready[c.date]) + pd.to_timedelta(h, unit="D")).dt.date,
                 "horizon": h,
                 "sales": sales_series.values,
             }
         )
         all_preds.append(out)
 
+    # Output path
+    out_csv = out_csv or Path("preds.csv")
     out_csv.parent.mkdir(parents=True, exist_ok=True)
+
     if not all_preds:
-        pd.DataFrame(
-            columns=["store_id", "item_id", "base_date", "target_date", "horizon", "sales"]
-        ).to_csv(out_csv, index=False)
+        pd.DataFrame(columns=["store_id", "item_id", "base_date", "target_date", "horizon", "sales"]).to_csv(
+            out_csv, index=False
+        )
         typer.echo("⚠️ No eligible rows to predict. Empty file written.")
         return
 
-    preds = (
-        pd.concat(all_preds, ignore_index=True)
-        .sort_values(["store_id", "item_id", "target_date", "horizon"])
-    )
+    preds = pd.concat(all_preds, ignore_index=True).sort_values(["store_id", "item_id", "target_date", "horizon"])
     preds.to_csv(out_csv, index=False)
     typer.echo(f"✅ Wrote predictions ({len(preds):,} rows) → {out_csv}")
+
 
 # ----------------------------
 # serve-web (API + HTML)
 # ----------------------------
 @app.command("serve-web")
 def cmd_serve_web(
-    models_dir: Path = typer.Option(..., help="Directory with trained models."),
-    data_csv: Optional[Path] = typer.Option(
-        None, help="(Optional) Path to sales CSV for feature parity / demo."
-    ),
-    hol_country: str = typer.Option("US", help="Holidays country code to use."),
-    hol_subdiv: Optional[str] = typer.Option(None, help="Holidays subdivision."),
-    horizons: Optional[str] = typer.Option(
-        None,
-        help="List or range of horizons the service should expose (e.g. '1-7'). "
-             "If omitted, uses config default.",
-    ),
-    host: str = typer.Option("127.0.0.1", help="Host to bind."),
-    port: int = typer.Option(8000, help="Port to bind."),
-    reload: bool = typer.Option(False, help="Reload on code changes (dev only)."),
+    models_dir: Annotated[Path, typer.Option(help="Directory with trained models.")] = ...,
+    data_csv: Annotated[
+        Optional[Path], typer.Option(help="(Optional) Path to sales CSV for feature parity / demo.")
+    ] = None,
+    hol_country: Annotated[str, typer.Option(help="Holidays country code to use.")] = "US",
+    hol_subdiv: Annotated[Optional[str], typer.Option(help="Holidays subdivision.")] = None,
+    horizons: Annotated[
+        Optional[str],
+        typer.Option(help="Horizons the service should expose (e.g. '1-7'). If omitted, uses config default."),
+    ] = None,
+    host: Annotated[str, typer.Option(help="Host to bind.")] = "127.0.0.1",
+    port: Annotated[int, typer.Option(help="Port to bind.")] = 8000,
+    reload: Annotated[bool, typer.Option(help="Reload on code changes (dev only).")] = False,
 ):
     """
     Start the FastAPI web service (Swagger + web UI).
@@ -460,9 +440,7 @@ def cmd_serve_web(
     try:
         import uvicorn  # noqa: F401
     except Exception as e:
-        raise RuntimeError(
-            "Web dependencies missing. Install with:  pip install '.[webui]'"
-        ) from e
+        raise RuntimeError("Web dependencies missing. Install with:  pip install '.[webui]'") from e
 
     # Export config to env for the ASGI app builder in boost_sales.api.server
     os.environ["SF_MODELS_DIR"] = str(models_dir)
@@ -478,6 +456,7 @@ def cmd_serve_web(
     os.environ["SF_HORIZONS"] = ",".join(map(str, hs))
 
     import uvicorn
+
     uvicorn.run(
         "boost_sales.api.server:app",
         host=host,
@@ -485,6 +464,7 @@ def cmd_serve_web(
         reload=reload,
         factory=False,
     )
+
 
 if __name__ == "__main__":
     app()

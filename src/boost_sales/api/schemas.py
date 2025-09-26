@@ -2,10 +2,9 @@
 from __future__ import annotations
 
 from datetime import date
-from typing import List, Optional, Literal
+from typing import List, Literal, Optional
 
-from pydantic import BaseModel, Field, model_validator, ConfigDict
-
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # -----------------------------
 # Scopes
@@ -63,9 +62,7 @@ class ForecastRequest(BaseModel):
     store_id: Optional[str] = Field(
         None, description="Store identifier. Required for scope=single and latest_per_store."
     )
-    item_id: Optional[str] = Field(
-        None, description="Item identifier. Required for scope=single and latest_per_item."
-    )
+    item_id: Optional[str] = Field(None, description="Item identifier. Required for scope=single and latest_per_item.")
 
     # Horizons as a string (e.g., '1-7' or '1,2,4'); parsing happens in service/cli
     horizons: Optional[str] = Field(
@@ -103,17 +100,11 @@ class ForecastRequest(BaseModel):
         ge=1,
         description="For scope=last_n_days, the trailing number of days to include.",
     )
-    since_date: Optional[date] = Field(
-        None, description="For scope=since_date, include rows on/after this date."
-    )
-    at_date: Optional[date] = Field(
-        None, description="For scope=at_date, include rows exactly on this date."
-    )
+    since_date: Optional[date] = Field(None, description="For scope=since_date, include rows on/after this date.")
+    at_date: Optional[date] = Field(None, description="For scope=at_date, include rows exactly on this date.")
 
     # Output formatting overrides (optional; falls back to server config if omitted)
-    unit_type: Optional[UnitType] = Field(
-        None, description="Override output unit type: 'integer' or 'float'."
-    )
+    unit_type: Optional[UnitType] = Field(None, description="Override output unit type: 'integer' or 'float'.")
     decimal_places: Optional[int] = Field(
         None,
         ge=0,

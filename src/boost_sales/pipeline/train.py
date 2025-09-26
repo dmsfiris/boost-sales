@@ -1,6 +1,4 @@
 # SPDX-License-Identifier: MIT
-from __future__ import annotations
-
 """
 Training pipeline (global and per-group) with parity controls.
 
@@ -21,28 +19,31 @@ Notes on validation:
   (Per-group for train-per-group.)
 - If both are None, we train on all data without a validation set.
 """
+from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Optional, Tuple
-import json
+
 import pandas as pd
 
+from boost_sales.api.core.controls import add_horizon_controls
+from boost_sales.api.core.features import prepare_features
 from boost_sales.config import AppConfig, xgb_params_from
 from boost_sales.data.io import load_sales_csv
-from boost_sales.models.xgb import train_one_horizon, save_booster
+from boost_sales.models.xgb import save_booster, train_one_horizon
 from boost_sales.pipeline.artifacts import outdir_for, write_categories
-from boost_sales.pipeline.groupers import iter_pairs, iter_items, iter_stores
-
-# Unified core utilities (training == serving)
-from boost_sales.api.core.features import prepare_features
-from boost_sales.api.core.controls import add_horizon_controls
+from boost_sales.pipeline.groupers import iter_items, iter_pairs, iter_stores
 
 
 def _save_holidays_meta(outdir: Path, cfg: AppConfig) -> None:
-    """Persist the holiday region used for feature building so serving can mirror it."""
+    """Persist the holiday region so serving can mirror it."""
     outdir.mkdir(parents=True, exist_ok=True)
     (outdir / "holidays_meta.json").write_text(
-        json.dumps({"country": cfg.train.hol_country, "subdiv": cfg.train.hol_subdiv}, indent=2),
+        json.dumps(
+            {"country": cfg.train.hol_country, "subdiv": cfg.train.hol_subdiv},
+            indent=2,
+        ),
         encoding="utf-8",
     )
 
@@ -50,14 +51,14 @@ def _save_holidays_meta(outdir: Path, cfg: AppConfig) -> None:
 def _schema_kwargs(cfg: AppConfig) -> dict:
     """Expand cfg.columns into explicit keyword args for the CSV loader."""
     c = cfg.columns
-    return dict(
-        date_col=c.date,
-        store_col=c.store,
-        item_col=c.item,
-        sales_col=c.sales,
-        price_col=c.price,
-        promo_col=c.promo,
-    )
+    return {
+        "date_col": c.date,
+        "store_col": c.store,
+        "item_col": c.item,
+        "sales_col": c.sales,
+        "price_col": c.price,
+        "promo_col": c.promo,
+    }
 
 
 def _derive_auto_cutoff(df: pd.DataFrame, date_col: str, tail_days: Optional[int]) -> Optional[str]:
@@ -101,11 +102,9 @@ def train_global(cfg: AppConfig) -> None:
     _save_holidays_meta(cfg.paths.models_dir, cfg)
 
     # Validation cutoff resolution:
-    # 1) use explicit valid_cutoff_date if provided
+    # 1) explicit valid_cutoff_date if provided
     # 2) else derive from valid_tail_days (e.g., last 28 days)
-    auto_cutoff = cfg.train.valid_cutoff_date or _derive_auto_cutoff(
-        df, c.date, cfg.train.valid_tail_days
-    )
+    auto_cutoff = cfg.train.valid_cutoff_date or _derive_auto_cutoff(df, c.date, cfg.train.valid_tail_days)
 
     params = xgb_params_from(cfg)
     for h in cfg.train.horizons:
@@ -124,7 +123,7 @@ def train_global(cfg: AppConfig) -> None:
             h,
             params,
             required_feature_notna=cfg.train.required_feature_notna,
-            valid_cutoff_date=auto_cutoff,  # <- dynamic or explicit
+            valid_cutoff_date=auto_cutoff,
             early_stopping_rounds=cfg.train.early_stopping_rounds,
             verbose_eval=cfg.train.verbose_eval,
         )
@@ -207,9 +206,7 @@ def train_per_group(cfg: AppConfig, scope: str) -> None:
         write_categories(outdir, g[c.store].unique(), g[c.item].unique())
 
         # Per-group dynamic cutoff (if explicit cutoff not given)
-        auto_cutoff = cfg.train.valid_cutoff_date or _derive_auto_cutoff(
-            g, c.date, cfg.train.valid_tail_days
-        )
+        auto_cutoff = cfg.train.valid_cutoff_date or _derive_auto_cutoff(g, c.date, cfg.train.valid_tail_days)
 
         for h in cfg.train.horizons:
             # Unified builder (no-op if future controls disabled in cfg.future)
@@ -227,7 +224,7 @@ def train_per_group(cfg: AppConfig, scope: str) -> None:
                 h,
                 params,
                 required_feature_notna=cfg.train.required_feature_notna,
-                valid_cutoff_date=auto_cutoff,  # <- dynamic per group or explicit
+                valid_cutoff_date=auto_cutoff,
                 early_stopping_rounds=cfg.train.early_stopping_rounds,
                 verbose_eval=cfg.train.verbose_eval,
             )

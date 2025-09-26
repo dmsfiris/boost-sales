@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import pandas as pd
 
-from boost_sales.config import AppConfig
 from boost_sales.api.schemas import ForecastRequest
+from boost_sales.config import AppConfig
 
 
 def apply_scope(df: pd.DataFrame, cfg: AppConfig, req: ForecastRequest) -> pd.DataFrame:

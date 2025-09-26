@@ -1,45 +1,38 @@
 # XGBoost Sales Forecast Web App and API
 
-Production‑ready, end‑to‑end time‑series forecasting for retail‑style data.  
-This project ships a FastAPI backend, a lightweight web UI, and a configurable XGBoost training pipeline that supports global and per‑group models, holiday features, and “what‑if” (price/promo) simulations.
+Production-ready time-series forecasting for retail-style data. **Who it’s for:** ML/data teams and planners who want a transparent, configurable baseline they can run locally or deploy as a service.
 
-<p align="center">
-  <img alt="Sales Forecast UI" src="https://user-images.githubusercontent.com/placeholder/sales-forecast-ui.png" width="720">
-</p>
-
-> **Highlights**
->
-> - 🧮 **Accurate**: strong lag/rolling features, holiday effects, future price/promo controls.
-> - ⚡ **Fast**: XGBoost `hist` (CPU) & `gpu_hist` (GPU) support, global modeling for scale.
-> - 🧰 **Practical**: train globally or per group; early‑stopping with validation windows.
-> - 🌐 **Simple UI**: forecast scopes, paging, formatting, and plan simulations.
-> - 🧾 **Typed API**: JSON & CSV endpoints; helpful errors; pagination; reproducible configs.
-> - 🪄 **Smart defaults**: holiday region, validation window, and ES rounds auto‑suggest.
+FastAPI backend + lightweight web UI + configurable XGBoost training (global or per‑group), with holiday features and **what‑if** price/promo simulations.
 
 ---
 
 ## Table of Contents
 
 - [Architecture](#architecture)
-- [Features](#features)
-- [Getting Started](#getting-started)
-  - [Requirements](#requirements)
-  - [Install](#install)
-  - [Quickstart (Dev)](#quickstart-dev)
+- [Highlights](#highlights)
+- [Quickstart](#quickstart)
 - [Configuration](#configuration)
+  - [Defaults](#defaults)
 - [Training](#training)
 - [Forecasting](#forecasting)
   - [Scopes](#scopes)
   - [What‑if Plans](#what-if-plans)
   - [Formatting](#formatting)
 - [REST API](#rest-api)
+  - [/docs and /redoc](#docs-and-redoc)
   - [/forecast (JSON)](#forecast-json)
   - [/forecast/csv (multipart)](#forecastcsv-multipart)
   - [/train](#train)
   - [/train/suggest_es](#trainsuggest_es)
+  - [Error responses](#error-responses)
 - [Data Schema](#data-schema)
+  - [Assumptions](#assumptions)
 - [Performance Tips](#performance-tips)
 - [Deploy](#deploy)
+  - [Uvicorn/Gunicorn](#uvicorngunicorn)
+  - [Docker](#docker)
+  - [Docker Compose](#docker-compose)
+  - [Security note](#security-note)
 - [Developing](#developing)
 - [Troubleshooting & FAQ](#troubleshooting--faq)
 - [License](#license)
@@ -49,7 +42,7 @@ This project ships a FastAPI backend, a lightweight web UI, and a configurable X
 ## Architecture
 
 ```
-sales_forecast/
+boost_sales/
 ├─ api/
 │  ├─ server.py              # FastAPI app factory & routes (UI + REST)
 │  ├─ schemas.py             # Pydantic models
@@ -74,18 +67,24 @@ sales_forecast/
 - **Holiday** features via country/subdivision.
 - **Future controls**: price/promo plans for scenario testing.
 
-## Features
+> _Tip: replace this section’s image with a real screenshot of your UI when available._
 
-- **Forecast UI** with multiple scopes: single target, latest per pair/store/item, last N days, since date, or exact date.
-- **Training UI** with presets (Balanced/Fast/Quality/GPU), advanced knobs, validation windows, and **Auto‑suggest** for `early_stopping_rounds`.
-- **CSV Upload** (optional) for both training and forecasting.
-- **Models directory override** (UI + API) to switch model sets.
-- **Friendly error messages** (Pydantic/FastAPI parsing, clear hints).
+---
 
-## Getting Started
+## Highlights
+
+- **Configurable**: global or per‑group models; lags/rolling windows; holiday effects; future price/promo controls.
+- **Fast**: XGBoost `hist` (CPU) & `gpu_hist` (GPU) support; global modeling for scale.
+- **Reproducible**: typed configs (Pydantic), versionable settings, deterministic seeds.
+- **Usable**: simple web UI for explore/train/forecast, and a typed REST API.
+- **Practical validation**: time‑based splits with validation windows and **auto‑suggested** `early_stopping_rounds` (derived from `n_estimators` and window size).
+- **Smart defaults**: holiday region, validation windows, and early stopping suggestions.
+
+---
+
+## Quickstart
 
 ### Requirements
-
 - Python **3.10+**
 - pip, venv (recommended)
 - (Optional) CUDA‑enabled XGBoost for GPU
@@ -93,19 +92,16 @@ sales_forecast/
 ### Install
 
 ```bash
-git clone https://github.com/your-org/sales-forecast-web.git
-cd sales-forecast-web
+git clone https://github.com/dmsfiris/boost-sales.git
+cd boost-sales
 
-# Option A: with a virtualenv
-python -m venv .venv && source .venv/bin/activate  # Windows: .venv\Scripts\activate
+# Virtual environment (recommended)
+python -m venv .venv && source .venv/bin/activate    # Windows: .venv\Scripts\activate
 pip install -U pip
-pip install -e .          # or: pip install -r requirements.txt
-
-# Option B: poetry (if you prefer)
-# poetry install
+pip install -e .   # or: pip install -r requirements.txt
 ```
 
-### Quickstart (Dev)
+### Run the app (Dev)
 
 ```bash
 # Environment
@@ -114,45 +110,77 @@ export SF_DATA_CSV=./data/sales.csv          # optional
 export SF_HOL_COUNTRY=US                     # default: US
 # export SF_HOL_SUBDIV=CA                    # optional (e.g., US-CA)
 
-# Run the app (auto-reload during dev)
-uvicorn sales_forecast.api.server:app --reload --port 8000
+# Start
+uvicorn boost_sales.api.server:app --reload --port 8000
 ```
 
-Open http://localhost:8000 to use the UI.  
-Use **Training** to fit models, then **Forecast** to generate predictions.
+Open the UI: `http://localhost:8000`  
+Interactive API docs: `http://localhost:8000/docs` (Swagger UI), `http://localhost:8000/redoc`
+
+### First forecast in one minute
+
+Use the built‑in demo CSV and the default configuration:
+
+```bash
+# Train (from the Training page), then request a simple forecast via API:
+curl -X POST http://localhost:8000/forecast \
+  -H "Content-Type: application/json" \
+  -d '{
+        "scope":"single",
+        "store_id":"S01",
+        "item_id":"I01",
+        "horizons":"1-7",
+        "use_server_csv":true,
+        "unit_type":"integer",
+        "decimal_places":0
+      }'
+```
+
+---
 
 ## Configuration
 
-Main config lives in **`sales_forecast/config.py`** (Pydantic models):
+Main config lives in **`boost_sales/config.py`** (Pydantic models).
 
 - **Paths**: CSV path & models directory.
 - **Columns**: rename date/store/item/sales/price/promo if your dataset differs.
-- **Calendar features**: year/quarter/month/day/dow/weekend (cheap & helpful).
-- **Lag & rolling**: lags (1,7,14,28), rolling stats (7,28), price roll context.
+- **Calendar features**: year/quarter/month/day/dow/weekend.
+- **Lag & rolling**: lags (1,7,14,28) and rolling stats (7,28).
 - **Future controls**: price/promo futures and price ratio.
 - **Output formatting**: integer vs float and decimal places.
 - **Training knobs**: `n_estimators`, `max_depth`, `learning_rate`, `tree_method`, regularization, etc.
-- **Validation**: `valid_tail_days` (e.g., 28) or `valid_cutoff_date` (exclusive split).
-- **Early Stopping**: `early_stopping_rounds` (UI can auto‑suggest based on window size & estimators).
+- **Validation**: `valid_tail_days` or `valid_cutoff_date` (time‑based split).
+- **Early Stopping**: `early_stopping_rounds`; the UI can **auto‑suggest** a value based on your window and estimator cap.
 
-Environment overrides used by the app factory:
-- `SF_MODELS_DIR` *(required)*
-- `SF_DATA_CSV` *(optional)*
-- `SF_HOL_COUNTRY` *(default `US`)*
-- `SF_HOL_SUBDIV` *(optional)*
-- `SF_HORIZONS` *(e.g., `1-7`)*
+### Defaults
+
+| Setting                | Default         | Notes                               |
+|-----------------------|-----------------|-------------------------------------|
+| `SF_HOL_COUNTRY`      | `US`            | Country‑level holidays enabled       |
+| `SF_HOL_SUBDIV`       | _(none)_        | Add e.g. `US-CA` for state holidays |
+| `SF_MODELS_DIR`       | _(required)_    | Where models are saved/loaded        |
+| `SF_DATA_CSV`         | _(optional)_    | Server‑side CSV path                 |
+| Horizons              | `1-7`           | 7 daily horizons                     |
+| Unit type             | `integer`       | Rounding applied                     |
+| Validation window     | `~10–20%` tail  | Choose recent tail or cutoff date    |
+
+Environment overrides are read on startup.
+
+---
 
 ## Training
 
 From the **Training** page you can:
 
-- Choose **mode**: `global` (fastest) or `per_group` (by pair / item / store).
-- Optional **wipe** of outputs.
-- Set **horizons**, **holiday region**, **XGBoost** params.
-- Configure **validation** via cutoff date or **last N days**.
-- Click **Auto‑suggest** to derive a good `early_stopping_rounds` from `n_estimators` & your validation window.
+- Choose **mode**: `global` (fastest) or `per_group` (by pair/item/store).
+- Wipe outputs (optional).
+- Set **horizons**, **holiday region**, and **XGBoost** params.
+- Choose validation via cutoff date or **last N days**.
+- Use **Auto‑suggest** to derive `early_stopping_rounds` from `n_estimators` & your validation window.
 
-> **Tip:** Prefer a reasonably large `n_estimators` with early stopping enabled. Let training stop when validation RMSE plateaus rather than guessing a small cap.
+> **Tip:** Prefer a reasonably large `n_estimators` with early stopping. Let training stop when validation RMSE plateaus rather than guessing a small cap.
+
+---
 
 ## Forecasting
 
@@ -184,9 +212,16 @@ Use the **Forecast** page to generate predictions and simulate plans.
 - `unit_type`: `integer` or `float`.
 - `decimal_places`: only applies to `float` output.
 
+---
+
 ## REST API
 
 All endpoints live under the same app as the UI.
+
+### /docs and /redoc
+
+- Swagger UI: `GET /docs`  
+- ReDoc: `GET /redoc`
 
 ### `/forecast` (JSON)
 
@@ -208,7 +243,7 @@ All endpoints live under the same app as the UI.
 }
 ```
 
-**Optional body field** (top‑level):  
+**Optional body field**:  
 - `models_dir` *(string)* — override the models directory used for loading models.
 
 **Response** (`application/json`)
@@ -291,6 +326,18 @@ Heuristic to recommend `early_stopping_rounds` given `n_estimators` and your val
 }
 ```
 
+### Error responses
+
+```json
+{
+  "detail": [
+    {"loc":["body","store_id"],"msg":"Field required","type":"value_error.missing"}
+  ]
+}
+```
+
+---
+
 ## Data Schema
 
 CSV must include these columns (rename via `config.py` if needed):
@@ -302,14 +349,25 @@ CSV must include these columns (rename via `config.py` if needed):
 - `price` (float)
 - `promo` (0/1/0.5)
 
+### Assumptions
+
+- **Cadence**: daily rows per `(store_id, item_id)`; non‑daily data should be resampled to daily.
+- **Timezone**: dates treated as naive local dates; convert to consistent local or UTC before ingest.
+- **Missing data**: rows with missing `sales` are excluded from training; `price/promo` missing values are imputed with hold‑forward where appropriate.
+- **Outliers**: spikes/dips are not automatically clipped; handle in your preprocessing if needed.
+
+---
+
 ## Performance Tips
 
-- Use **global** mode first; switch to per‑group for tricky segments only.
-- Prefer `tree_method="hist"` on CPU. Use `gpu_hist` if available.
-- Set a **large** `n_estimators` cap with **early stopping**.
+- Start with **global** mode; switch to per‑group for tricky segments only.
+- Prefer `tree_method="hist"` on CPU. Use `gpu_hist` if available (e.g., `max_bin=256`).
+- Set a **large** `n_estimators` with **early stopping**.
 - Validation: use a **recent window** (e.g., last 10–20% of dates).  
-- Holidays: **enable** the appropriate country; optionally add subdivision (`US-CA`) for state holidays.
-- Reproducibility: set `random_state`; enable “enforce single thread” + `nthread=1` only if you need bit‑for‑bit parity.
+- Holidays: enable the appropriate country; optionally add subdivision (e.g., `US-CA`) for state holidays.
+- Reproducibility: set `random_state`; enforce single thread (`nthread=1`) only if you need bit‑for‑bit parity.
+
+---
 
 ## Deploy
 
@@ -320,11 +378,11 @@ Any ASGI host works. Minimal examples:
 ```bash
 export SF_MODELS_DIR=/opt/models
 export SF_DATA_CSV=/opt/data/sales.csv
-uvicorn sales_forecast.api.server:app --host 0.0.0.0 --port 8000
-# or: gunicorn -k uvicorn.workers.UvicornWorker sales_forecast.api.server:app
+uvicorn boost_sales.api.server:app --host 0.0.0.0 --port 8000
+# or: gunicorn -k uvicorn.workers.UvicornWorker boost_sales.api.server:app
 ```
 
-### Docker (sketch)
+### Docker
 
 ```dockerfile
 FROM python:3.11-slim
@@ -333,8 +391,30 @@ COPY . .
 RUN pip install -U pip && pip install -e .
 ENV SF_MODELS_DIR=/models SF_DATA_CSV=/data/sales.csv
 EXPOSE 8000
-CMD ["uvicorn", "sales_forecast.api.server:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "boost_sales.api.server:app", "--host", "0.0.0.0", "--port", "8000"]
 ```
+
+### Docker Compose
+
+```yaml
+services:
+  sales-forecast:
+    build: .
+    ports: ["8000:8000"]
+    environment:
+      SF_MODELS_DIR: /models
+      SF_DATA_CSV: /data/sales.csv
+      SF_HOL_COUNTRY: US
+    volumes:
+      - ./models:/models
+      - ./data:/data
+```
+
+### Security note
+
+Run behind a reverse proxy / gateway with authentication if exposed outside a trusted network. Configure CORS appropriately for the UI domain.
+
+---
 
 ## Developing
 
@@ -342,6 +422,8 @@ CMD ["uvicorn", "sales_forecast.api.server:app", "--host", "0.0.0.0", "--port", 
 - Tests: add under `tests/` (PyTest).
 - Static assets: edit `static/main.js` and `static/main.css`.
 - Templates: `templates/forecast.html` & `templates/training.html`.
+
+---
 
 ## Troubleshooting & FAQ
 
@@ -359,6 +441,8 @@ A: With `valid_tail_days=28` we suggest ~12% of `n_estimators` (clamped). For `n
 
 **Q: Global vs per‑group training?**  
 A: Global is faster and generalizes across entities; per‑group can capture idiosyncrasies but is slower and can overfit small groups.
+
+---
 
 ## License
 

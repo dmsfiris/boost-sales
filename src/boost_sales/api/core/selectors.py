@@ -2,10 +2,9 @@
 from __future__ import annotations
 
 from datetime import date, timedelta
-from typing import Optional, Literal
+from typing import Literal, Optional
 
 import pandas as pd
-
 
 ForecastScope = Literal[
     "single",

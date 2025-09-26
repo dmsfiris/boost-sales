@@ -1,9 +1,8 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-from typing import Optional, Sequence, List
 import re
-
+from typing import List, Optional, Sequence
 
 _RANGE_RE = re.compile(r"^\s*(\d+)\s*-\s*(\d+)\s*$")
 _INT_RE = re.compile(r"^\s*(\d+)\s*$")
@@ -65,9 +64,7 @@ def parse_horizons_opt(
             continue
 
         # Anything else is malformed
-        raise ValueError(
-            f"Invalid horizon token: {tok!r}. Use integers and ranges like '1,2,4-7'."
-        )
+        raise ValueError(f"Invalid horizon token: {tok!r}. Use integers and ranges like '1,2,4-7'.")
 
     return sorted(set(out))
 

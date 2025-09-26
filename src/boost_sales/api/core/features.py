@@ -6,9 +6,9 @@ from typing import Optional
 import pandas as pd
 
 from boost_sales.config import AppConfig
-from boost_sales.features.time_features import add_calendar
-from boost_sales.features.lag_features import add_lags_and_rollups
 from boost_sales.features.holidays import add_holidays
+from boost_sales.features.lag_features import add_lags_and_rollups
+from boost_sales.features.time_features import add_calendar
 
 
 def prepare_features(

@@ -100,10 +100,7 @@ def assume_no_change_fill(
 
     need_ph = out[ph].isna()
     if need_ph.any() and price_col in out.columns:
-        out.loc[need_ph, ph] = (
-            pd.to_numeric(out.loc[need_ph, price_col], errors="coerce")
-            .astype("float64")
-        )
+        out.loc[need_ph, ph] = pd.to_numeric(out.loc[need_ph, price_col], errors="coerce").astype("float64")
 
     # ---- promo_h{h} ----
     if pmh not in out.columns:

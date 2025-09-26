@@ -1,6 +1,9 @@
 from __future__ import annotations
-import pandas as pd
+
 from typing import Tuple
+
+import pandas as pd
+
 
 def chronological_split(df: pd.DataFrame, cutoff: str, date_col: str = "date") -> Tuple[pd.DataFrame, pd.DataFrame]:
     cutoff = pd.to_datetime(cutoff)

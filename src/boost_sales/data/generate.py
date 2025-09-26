@@ -15,9 +15,9 @@ class Schema:
     date: str = "date"
     store: str = "store_id"
     item: str = "item_id"
-    price: str = "price"    # float, <= 2 decimals
-    promo: str = "promo"    # 0/1 int
-    sales: str = "sales"    # integer
+    price: str = "price"  # float, <= 2 decimals
+    promo: str = "promo"  # 0/1 int
+    sales: str = "sales"  # integer
 
     # transactions/raw names (if using tx -> panel)
     qty: str = "quantity"
@@ -35,7 +35,6 @@ def _order_cols(df: pd.DataFrame, sch: Schema) -> pd.DataFrame:
 # -------------------------------
 # Synthetic panel (legacy-like)
 # -------------------------------
-
 def generate_synthetic(
     *,
     n_stores: int = 5,
@@ -43,18 +42,23 @@ def generate_synthetic(
     start: str = "2024-01-01",
     periods: int = 365,
     seed: int = 42,
-    schema: Schema = Schema(),
+    schema: Optional[Schema] = None,
 ) -> pd.DataFrame:
     """
     Synthetic daily panel matching legacy scales:
       price ~ 100..600 (2 decimals), promo in {0,1} ~10%, sales integer.
     """
+    schema = schema or Schema()
+
     rng = np.random.default_rng(seed)
     dates = pd.date_range(start=start, periods=periods, freq="D")
     stores = [f"S{i:02d}" for i in range(1, n_stores + 1)]
     items = [f"I{i:02d}" for i in range(1, n_items + 1)]
 
-    idx = pd.MultiIndex.from_product([stores, items, dates], names=[schema.store, schema.item, schema.date])
+    idx = pd.MultiIndex.from_product(
+        [stores, items, dates],
+        names=[schema.store, schema.item, schema.date],
+    )
     df = pd.DataFrame(index=idx).reset_index()
 
     dow = df[schema.date].dt.dayofweek
@@ -63,7 +67,7 @@ def generate_synthetic(
     item_fx = df[schema.item].str[-2:].astype(int).to_numpy() / 2.0
 
     promo = (rng.random(len(df)) < 0.10).astype(np.int8)  # numpy int8
-    promo_s = pd.Series(promo, dtype="int8")              # pandas series int8
+    promo_s = pd.Series(promo, dtype="int8")  # pandas series int8
 
     base_sales = 18 + day_fx + store_fx + item_fx
     sales = base_sales + rng.normal(0, 3, len(df)) + promo * 5
@@ -73,14 +77,20 @@ def generate_synthetic(
     price = np.clip(price, 90, 600)
     price = np.round(price, 2)  # two decimals
 
-    out = pd.DataFrame({
-        schema.date: df[schema.date],
-        schema.store: df[schema.store].astype("string"),
-        schema.item: df[schema.item].astype("string"),
-        schema.price: price.astype(float),
-        schema.promo: promo_s,            # int8 series
-        schema.sales: sales,              # int64 array
-    }).sort_values([schema.store, schema.item, schema.date]).reset_index(drop=True)
+    out = (
+        pd.DataFrame(
+            {
+                schema.date: df[schema.date],
+                schema.store: df[schema.store].astype("string"),
+                schema.item: df[schema.item].astype("string"),
+                schema.price: price.astype(float),
+                schema.promo: promo_s,  # int8 series
+                schema.sales: sales,  # int64 array
+            }
+        )
+        .sort_values([schema.store, schema.item, schema.date])
+        .reset_index(drop=True)
+    )
 
     return _order_cols(out, schema)
 
@@ -88,16 +98,17 @@ def generate_synthetic(
 # --------------------------------
 # Flat panel pass-through
 # --------------------------------
-
 def generate_from_flat(
     flat_csv: Path,
     *,
-    schema: Schema = Schema(),
+    schema: Optional[Schema] = None,
     parse_dates: bool = True,
 ) -> pd.DataFrame:
+    schema = schema or Schema()
+
     engine = "pyarrow"
     try:
-        import pyarrow  # noqa
+        import pyarrow  # noqa: F401
     except Exception:
         engine = "c"
 
@@ -123,7 +134,6 @@ def generate_from_flat(
 # --------------------------------
 # Transactions -> daily panel
 # --------------------------------
-
 def _price_aggregate(
     lines: pd.DataFrame,
     groupers: Sequence[str],
@@ -154,19 +164,21 @@ def _price_aggregate(
 def generate_from_transactions(
     tx_csv: Path,
     *,
-    schema: Schema = Schema(),
+    schema: Optional[Schema] = None,
     parse_dates: bool = True,
     group_extra: Optional[Sequence[str]] = None,
-    sales_as: str = "sum",            # 'sum' (qty) | 'count' (lines)
+    sales_as: str = "sum",  # 'sum' (qty) | 'count' (lines)
     price_strategy: str = "weighted_avg",
-    promo_strategy: str = "column",   # 'column' | 'price_drop_vs_roll'
+    promo_strategy: str = "column",  # 'column' | 'price_drop_vs_roll'
     promo_col_name: Optional[str] = None,
     promo_roll_window: int = 28,
     promo_drop_threshold: float = 0.10,
 ) -> pd.DataFrame:
+    schema = schema or Schema()
+
     engine = "pyarrow"
     try:
-        import pyarrow  # noqa
+        import pyarrow  # noqa: F401
     except Exception:
         engine = "c"
 
@@ -200,14 +212,23 @@ def generate_from_transactions(
 
     # PRICE (<= 2 decimals)
     if schema.unit_price in df.columns:
-        g_price = _price_aggregate(
-            df, groupers, qty_col=schema.qty, unit_price_col=schema.unit_price, strategy=price_strategy
-        ).round(2).rename(schema.price)
+        g_price = (
+            _price_aggregate(
+                df,
+                groupers,
+                qty_col=schema.qty,
+                unit_price_col=schema.unit_price,
+                strategy=price_strategy,
+            )
+            .round(2)
+            .rename(schema.price)
+        )
     else:
         g_price = pd.Series(index=g_sales.index, dtype="float64", name=schema.price)
 
     # PROMO
-    if promo_strategy == "column" and (promo_col_name or schema.promo_tx) and ((promo_col_name or schema.promo_tx) in df.columns):
+    has_promo_col = (promo_col_name or schema.promo_tx) and ((promo_col_name or schema.promo_tx) in df.columns)
+    if promo_strategy == "column" and has_promo_col:
         pcol = promo_col_name or schema.promo_tx  # type: ignore[assignment]
         g_promo = pd.to_numeric(df[pcol], errors="coerce").fillna(0).astype("int8").groupby(groupers).max()
     elif promo_strategy == "price_drop_vs_roll" and schema.unit_price in df.columns:
@@ -216,7 +237,9 @@ def generate_from_transactions(
         daily_price["_roll"] = daily_price.groupby(key)[schema.unit_price].transform(
             lambda s: s.rolling(promo_roll_window, min_periods=1).mean()
         )
-        daily_price["_promo"] = (daily_price[schema.unit_price] <= (1 - promo_drop_threshold) * daily_price["_roll"]).astype("int8")
+        daily_price["_promo"] = (
+            daily_price[schema.unit_price] <= (1 - promo_drop_threshold) * daily_price["_roll"]
+        ).astype("int8")
         g_promo = daily_price.set_index(groupers)["_promo"]
     else:
         g_promo = pd.Series(0, index=g_sales.index, dtype="int8")
@@ -231,7 +254,6 @@ def generate_from_transactions(
 # --------------------------------
 # Public entry points
 # --------------------------------
-
 def build_dataset(
     *,
     mode: str,
@@ -269,12 +291,12 @@ def build_dataset(
     """
     cfg = cfg or AppConfig()
     schema = Schema(
-        date=date_col or cfg.cols.date,
-        store=store_col or cfg.cols.store,
-        item=item_col or cfg.cols.item,
-        price=price_col or cfg.cols.price,
-        promo=promo_col or cfg.cols.promo,
-        sales=sales_col or cfg.cols.sales,
+        date=date_col or cfg.columns.date,
+        store=store_col or cfg.columns.store,
+        item=item_col or cfg.columns.item,
+        price=price_col or cfg.columns.price,
+        promo=promo_col or cfg.columns.promo,
+        sales=sales_col or cfg.columns.sales,
         qty=qty_col or Schema.qty,
         unit_price=unit_price_col or Schema.unit_price,
         promo_tx=promo_col_name,
@@ -282,7 +304,12 @@ def build_dataset(
 
     if mode == "synthetic":
         return generate_synthetic(
-            n_stores=n_stores, n_items=n_items, start=start, periods=periods, seed=seed, schema=schema
+            n_stores=n_stores,
+            n_items=n_items,
+            start=start,
+            periods=periods,
+            seed=seed,
+            schema=schema,
         )
     if mode == "from-flat":
         if not flat_csv:

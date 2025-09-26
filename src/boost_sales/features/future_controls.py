@@ -19,7 +19,7 @@ def add_future_controls(
     add_promo_future: bool = True,
     add_price_ratio: bool = True,
     safe_zero_denominator: bool = True,
-    group_cols: Optional[Sequence[str]] = None,   # <- allow grouped shifts
+    group_cols: Optional[Sequence[str]] = None,  # <- allow grouped shifts
 ) -> pd.DataFrame:
     """
     Build horizon-specific exogenous controls:

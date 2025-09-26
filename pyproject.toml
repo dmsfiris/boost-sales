@@ -41,7 +41,6 @@ dev = [
   "pytest-cov>=4.1.0",
   "ruff>=0.5.0",
   "black>=24.3.0",
-  "isort>=5.13.0",
   "mypy>=1.8.0",
 ]
 webui = [
@@ -52,13 +51,12 @@ webui = [
   # optional nicety:
   "orjson>=3.9 ; sys_platform != 'win32'",
 ]
-# Union of dev + webui (PEP 621 can't reference extras, so list explicitly)
+# Union of dev + webui (explicit list per PEP 621)
 all = [
   "pytest>=8.0.0",
   "pytest-cov>=4.1.0",
   "ruff>=0.5.0",
   "black>=24.3.0",
-  "isort>=5.13.0",
   "mypy>=1.8.0",
   "fastapi>=0.114,<0.116",
   "uvicorn[standard]>=0.30,<0.31",
@@ -68,7 +66,7 @@ all = [
 ]
 
 [project.scripts]
-boost-sales = "boost_sales.cli:app"  # CLI command (hyphen)
+boost-sales = "boost_sales.cli:app"
 
 [project.urls]
 Repository = "https://github.com/dmsfiris/boost-sales"
@@ -98,13 +96,19 @@ namespaces = false
 
 # ---- Dev tool configs ----
 [tool.ruff]
-line-length = 100
+line-length = 120
 target-version = "py39"
-select = ["E", "F", "I", "B"]
 exclude = ["src/legacy"]
 
+[tool.ruff.lint]
+select = ["E", "F", "I", "B"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["boost_sales"]
+force-sort-within-sections = true
+
 [tool.black]
-line-length = 100
+line-length = 120
 target-version = ["py39"]
 exclude = '''
 /(
@@ -114,11 +118,6 @@ exclude = '''
   | src/legacy
 )/
 '''
-
-[tool.isort]
-profile = "black"
-line_length = 100
-skip = ["src/legacy"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

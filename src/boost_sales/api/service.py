@@ -1,27 +1,27 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import List, Optional, Tuple, cast
 
-import json
 import numpy as np
 import pandas as pd
 
-from boost_sales.config import AppConfig
-from boost_sales.models.xgb import load_booster
-
-# ---- Core utilities (reuse, don't duplicate) ----
-from boost_sales.api.core.horizons import parse_horizons_opt
-from boost_sales.api.core.paginate import paginate_df
 from boost_sales.api.core.controls import (
     add_horizon_controls,
     assume_no_change_fill,
 )
-from boost_sales.api.core.selectors import select_rows
 from boost_sales.api.core.features import prepare_features
 
-from .schemas import ForecastRequest, ForecastResponse, PredictionRow, PageMeta, UnitType
+# ---- Core utilities (reuse, don't duplicate) ----
+from boost_sales.api.core.horizons import parse_horizons_opt
+from boost_sales.api.core.paginate import paginate_df
+from boost_sales.api.core.selectors import select_rows
+from boost_sales.config import AppConfig
+from boost_sales.models.xgb import load_booster
+
+from .schemas import ForecastRequest, ForecastResponse, PageMeta, PredictionRow, UnitType
 
 
 # -----------------------------
@@ -106,7 +106,8 @@ def _load_df_from_source(cfg: AppConfig, req: ForecastRequest, csv_bytes: Option
     from boost_sales.data.io import load_sales_csv  # path-based reader
 
     if csv_bytes is not None:
-        import tempfile, os
+        import os
+        import tempfile
 
         tmp_path: Optional[Path] = None
         try:
@@ -331,7 +332,13 @@ def _predict_for_horizons(
 
         # Apply plan overrides (in place)
         _apply_future_overrides(
-            dfh, h, cfg, price_mode, price_map, promo_mode, promo_map,
+            dfh,
+            h,
+            cfg,
+            price_mode,
+            price_map,
+            promo_mode,
+            promo_map,
             derive_price_from_promo=derive_price_from_promo,
         )
 
@@ -402,9 +409,7 @@ def forecast(cfg: AppConfig, req: ForecastRequest, csv_bytes: Optional[bytes] = 
     # Use config output defaults unless overridden
     unit_type: UnitType = cast(UnitType, req.unit_type or cfg.output.unit_type)
     decimal_places: int = (
-        req.decimal_places
-        if (req.decimal_places is not None and unit_type == "float")
-        else cfg.output.decimal_places
+        req.decimal_places if (req.decimal_places is not None and unit_type == "float") else cfg.output.decimal_places
     )
 
     # Align holiday region with training if metadata is present (optional but recommended)

@@ -13,10 +13,11 @@ modules, e.g.:
 
 from __future__ import annotations
 
+from .holidays import add_holidays
+from .lag_features import add_lags_and_rollups
+
 # Lightweight, explicit re-exports
 from .time_features import add_calendar
-from .lag_features import add_lags_and_rollups
-from .holidays import add_holidays
 
 __all__ = [
     "add_calendar",

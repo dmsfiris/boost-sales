@@ -6,9 +6,9 @@ from typing import Iterable, List, Optional
 import numpy as np
 import pandas as pd
 
+from boost_sales.api.core.controls import add_horizon_controls, assume_no_change_fill
 from boost_sales.config import AppConfig
 from boost_sales.models.xgb import load_booster
-from boost_sales.api.core.controls import add_horizon_controls, assume_no_change_fill
 
 _OUT_COLS = ["store_id", "item_id", "base_date", "target_date", "horizon", "sales"]
 
@@ -96,7 +96,7 @@ def format_sales_column(
     df: pd.DataFrame,
     cfg: AppConfig,
     *,
-    unit_type: Optional[str] = None,       # "integer" | "float" | None -> cfg.output.unit_type
+    unit_type: Optional[str] = None,  # "integer" | "float" | None -> cfg.output.unit_type
     decimal_places: Optional[int] = None,  # None -> cfg.output.decimal_places
 ) -> pd.DataFrame:
     """

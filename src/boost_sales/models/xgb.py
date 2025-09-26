@@ -1,14 +1,13 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import List, Optional, Sequence, Tuple
 
-import json
 import numpy as np
 import pandas as pd
 import xgboost as xgb
-
 
 __all__ = [
     "train_one_horizon",
@@ -50,11 +49,7 @@ def _maybe_build_target(
         return df
     out = df.copy()
     out.sort_values([store_col, item_col, date_col], inplace=True, kind="stable")
-    out[target_col] = (
-        out.groupby([store_col, item_col], sort=False)[base_target]
-        .shift(-int(horizon))
-        .astype("float64")
-    )
+    out[target_col] = out.groupby([store_col, item_col], sort=False)[base_target].shift(-int(horizon)).astype("float64")
     return out
 
 
@@ -69,10 +64,7 @@ def _select_features(
 ) -> List[str]:
     """Numeric feature columns excluding identifiers & targets."""
     exclude = {date_col, store_col, item_col, base_target, target_col}
-    feats = [
-        c for c in df.columns
-        if c not in exclude and pd.api.types.is_numeric_dtype(df[c])
-    ]
+    feats = [c for c in df.columns if c not in exclude and pd.api.types.is_numeric_dtype(df[c])]
     if not feats:
         raise ValueError("No numeric features found after exclusions.")
     return feats
@@ -266,9 +258,7 @@ def predict_one_horizon(
     # Presence check (fail fast if training features are missing)
     missing = [f for f in feats if f not in df.columns]
     if missing:
-        raise KeyError(
-            f"Missing required features for prediction: {missing[:6]}{'...' if len(missing) > 6 else ''}"
-        )
+        raise KeyError(f"Missing required features for prediction: {missing[:6]}{'...' if len(missing) > 6 else ''}")
 
     X = df.copy()
 

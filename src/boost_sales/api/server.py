@@ -1,22 +1,22 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-import os
-import shutil
-from pathlib import Path
-from typing import Optional, List
 from datetime import datetime
+import os
+from pathlib import Path
+import shutil
+from typing import Annotated, Optional
 
-from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Form, Body
+from fastapi import Body, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse
-from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
-
-from boost_sales.config import AppConfig
-from .schemas import ForecastRequest, ForecastResponse
-from .service import forecast, forecast_from_csv_bytes
+from fastapi.templating import Jinja2Templates
 
 from boost_sales.api.core.horizons import parse_horizons_opt
+from boost_sales.config import AppConfig
+
+from .schemas import ForecastRequest, ForecastResponse
+from .service import forecast, forecast_from_csv_bytes
 
 
 class APIServer:
@@ -42,7 +42,7 @@ class APIServer:
             self.cfg.train.horizons = list(horizons)  # type: ignore[assignment]
 
         # ---------- Templates (package-level) ----------
-        # server.py is sales_forecast/api/server.py; templates at sales_forecast/templates
+        # server.py is boost_sales/api/server.py; templates at boost_sales/templates
         if templates_dir is None:
             templates_dir = Path(__file__).resolve().parents[1] / "templates"
         self.templates = Jinja2Templates(directory=str(templates_dir))
@@ -128,10 +128,10 @@ class APIServer:
         @app.post("/forecast", response_model=ForecastResponse)
         def post_forecast(
             req: ForecastRequest,
-            models_dir: Optional[str] = Body(
-                None,
-                description="Optional override for models directory used to load trained models.",
-            ),
+            models_dir: Annotated[
+                Optional[str],
+                Body(description="Optional override for models directory used to load trained models."),
+            ] = None,
         ) -> ForecastResponse:
             try:
                 # clone base config, then apply models_dir override if provided
@@ -146,23 +146,24 @@ class APIServer:
 
         @app.post("/forecast/csv", response_model=ForecastResponse)
         async def post_forecast_csv(
-            file: Optional[UploadFile] = File(None),  # optional to allow demo CSV
-            scope: str = Form("single"),
-            store_id: Optional[str] = Form(None),
-            item_id: Optional[str] = Form(None),
-            horizons: Optional[str] = Form(None),
-            use_demo_csv: bool = Form(False),
+            file: Annotated[Optional[UploadFile], File()] = None,  # optional to allow demo CSV
+            scope: Annotated[str, Form()] = "single",
+            store_id: Annotated[Optional[str], Form()] = None,
+            item_id: Annotated[Optional[str], Form()] = None,
+            horizons: Annotated[Optional[str], Form()] = None,
+            use_demo_csv: Annotated[bool, Form()] = False,
             # new plan + formatting fields to match schema
-            price_future: Optional[str] = Form(None),
-            promo_future: Optional[str] = Form(None),
-            unit_type: Optional[str] = Form(None),        # "integer" | "float"
-            decimal_places: Optional[int] = Form(None),
-            page: int = Form(1),
-            page_size: int = Form(100),
+            price_future: Annotated[Optional[str], Form()] = None,
+            promo_future: Annotated[Optional[str], Form()] = None,
+            unit_type: Annotated[Optional[str], Form()] = None,  # "integer" | "float"
+            decimal_places: Annotated[Optional[int], Form()] = None,
+            page: Annotated[int, Form()] = 1,
+            page_size: Annotated[int, Form()] = 100,
             # models override
-            models_dir: Optional[str] = Form(
-                None, description="Optional override for models directory."
-            ),
+            models_dir: Annotated[
+                Optional[str],
+                Form(description="Optional override for models directory."),
+            ] = None,
         ) -> ForecastResponse:
             try:
                 # clone base config, then apply models_dir override if provided
@@ -178,7 +179,7 @@ class APIServer:
                     use_server_csv=use_demo_csv,
                     price_future=price_future,
                     promo_future=promo_future,
-                    unit_type=unit_type,               # pydantic will validate Literal
+                    unit_type=unit_type,  # pydantic will validate Literal
                     decimal_places=decimal_places,
                     page=page,
                     page_size=page_size,
@@ -203,15 +204,17 @@ class APIServer:
 
         @app.post("/train/suggest_es")
         async def suggest_early_stopping_rounds(
-            n_estimators: int = Form(..., description="Total trees planned"),
-            valid_tail_days: Optional[int] = Form(
-                None, description="Validation window length (last N days)."
-            ),
-            valid_cutoff_date: Optional[str] = Form(
-                None, description="Explicit cutoff date; used to assume a default tail if needed."
-            ),
-            cap_min: int = Form(20, description="Lower clamp for suggestion."),
-            cap_max: int = Form(120, description="Upper clamp for suggestion."),
+            n_estimators: Annotated[int, Form(description="Total trees planned")],
+            valid_tail_days: Annotated[
+                Optional[int],
+                Form(description="Validation window length (last N days)."),
+            ] = None,
+            valid_cutoff_date: Annotated[
+                Optional[str],
+                Form(description="Explicit cutoff date; used to assume a default tail if needed."),
+            ] = None,
+            cap_min: Annotated[int, Form(description="Lower clamp for suggestion.")] = 20,
+            cap_max: Annotated[int, Form(description="Upper clamp for suggestion.")] = 120,
         ):
             """
             Suggest a patience (early_stopping_rounds) based on n_estimators and validation window size.
@@ -252,7 +255,7 @@ class APIServer:
             elif (valid_cutoff_date or "").strip():
                 note += "a cutoff date (assumed 28-day window)."
             else:
-                note += "no validation split (neutral %. Consider adding a split for early stopping to work)."
+                note += "no validation split (neutral %. Consider adding a split " "for early stopping to work)."
 
             return JSONResponse(
                 {
@@ -272,52 +275,49 @@ class APIServer:
         @app.post("/train")
         async def post_train(
             # mode & scope
-            mode: str = Form("global"),                 # "global" | "per_group"
-            train_scope: Optional[str] = Form(None),    # "pair" | "item" | "store" (when per_group)
-
+            mode: Annotated[str, Form()] = "global",  # "global" | "per_group"
+            train_scope: Annotated[Optional[str], Form()] = None,  # "pair" | "item" | "store"
             # data
-            use_demo_csv: bool = Form(True),
-            file: Optional[UploadFile] = File(None),
-
+            use_demo_csv: Annotated[bool, Form()] = True,
+            file: Annotated[Optional[UploadFile], File()] = None,
             # paths / horizons / holidays
-            models_dir: str = Form("models"),
-            horizons: Optional[str] = Form(None),
-            hol_country: str = Form("US"),
-            hol_subdiv: Optional[str] = Form(None),
-            wipe: bool = Form(False),
-
+            models_dir: Annotated[str, Form()] = "models",
+            horizons: Annotated[Optional[str], Form()] = None,
+            hol_country: Annotated[str, Form()] = "US",
+            hol_subdiv: Annotated[Optional[str], Form()] = None,
+            wipe: Annotated[bool, Form()] = False,
             # xgb knobs (optional)
-            nthread: Optional[int] = Form(None),
-            n_estimators: Optional[int] = Form(None),
-            max_depth: Optional[int] = Form(None),
-            learning_rate: Optional[float] = Form(None),
-            tree_method: Optional[str] = Form(None),
-            subsample: Optional[float] = Form(None),
-            colsample_bytree: Optional[float] = Form(None),
-            min_child_weight: Optional[float] = Form(None),
-            gamma: Optional[float] = Form(None),
-            reg_alpha: Optional[float] = Form(None),
-            reg_lambda: Optional[float] = Form(None),
-            max_bin: Optional[int] = Form(None),
-            random_state: Optional[int] = Form(None),
-            required_feature_notna: Optional[str] = Form(None),  # comma-separated
-
+            nthread: Annotated[Optional[int], Form()] = None,
+            n_estimators: Annotated[Optional[int], Form()] = None,
+            max_depth: Annotated[Optional[int], Form()] = None,
+            learning_rate: Annotated[Optional[float], Form()] = None,
+            tree_method: Annotated[Optional[str], Form()] = None,
+            subsample: Annotated[Optional[float], Form()] = None,
+            colsample_bytree: Annotated[Optional[float], Form()] = None,
+            min_child_weight: Annotated[Optional[float], Form()] = None,
+            gamma: Annotated[Optional[float], Form()] = None,
+            reg_alpha: Annotated[Optional[float], Form()] = None,
+            reg_lambda: Annotated[Optional[float], Form()] = None,
+            max_bin: Annotated[Optional[int], Form()] = None,
+            random_state: Annotated[Optional[int], Form()] = None,
+            required_feature_notna: Annotated[Optional[str], Form()] = None,  # comma-separated
             # validation
-            valid_cutoff_date: Optional[str] = Form(None),
-            valid_tail_days: Optional[int] = Form(None),         # honor window (last N days)
-            early_stopping_rounds: Optional[int] = Form(None),
-            verbose_eval: Optional[int] = Form(0),
-            enforce_single_thread_env: bool = Form(False),
+            valid_cutoff_date: Annotated[Optional[str], Form()] = None,
+            valid_tail_days: Annotated[Optional[int], Form()] = None,  # honor window (last N days)
+            early_stopping_rounds: Annotated[Optional[int], Form()] = None,
+            verbose_eval: Annotated[Optional[int], Form()] = 0,
+            enforce_single_thread_env: Annotated[bool, Form()] = False,
         ):
             """
             Synchronous training trigger used by the Training page.
             Covers global & per-group modes, optional wipe, full XGB knobs,
             server/demo vs uploaded CSV, and validation settings.
             """
-            from time import perf_counter
-            from boost_sales.pipeline.train import train_global, train_per_group
-            from boost_sales.data.io import load_sales_csv
             import tempfile
+            from time import perf_counter
+
+            from boost_sales.data.io import load_sales_csv
+            from boost_sales.pipeline.train import train_global, train_per_group
 
             cfg = AppConfig(**self.cfg.model_dump())
 
@@ -330,11 +330,17 @@ class APIServer:
                 if use_demo_csv:
                     dc = getattr(self.cfg.paths, "data_csv", None)
                     if not dc or not Path(dc).exists():
-                        raise HTTPException(status_code=400, detail="Server CSV not configured/available.")
+                        raise HTTPException(
+                            status_code=400,
+                            detail="Server CSV not configured/available.",
+                        )
                     cfg.paths.data_csv = Path(dc)
                 else:
                     if file is None:
-                        raise HTTPException(status_code=400, detail="Upload a CSV or enable 'Use server CSV'.")
+                        raise HTTPException(
+                            status_code=400,
+                            detail="Upload a CSV or enable 'Use server CSV'.",
+                        )
                     contents = await file.read()
                     if not contents:
                         raise HTTPException(status_code=400, detail="Uploaded CSV is empty.")
@@ -399,9 +405,15 @@ class APIServer:
                     if mode == "global":
                         shutil.rmtree(mdir, ignore_errors=True)
                     else:
-                        sub = {"pair": "by_pair", "item": "by_item", "store": "by_store"}.get(train_scope or "", "")
+                        sub = {"pair": "by_pair", "item": "by_item", "store": "by_store"}.get(
+                            train_scope or "",
+                            "",
+                        )
                         if not sub:
-                            raise HTTPException(status_code=400, detail="train_scope must be one of: pair, item, store.")
+                            raise HTTPException(
+                                status_code=400,
+                                detail=("train_scope must be one of: " "pair, item, store."),
+                            )
                         shutil.rmtree(mdir / sub, ignore_errors=True)
 
                 # Train
@@ -412,11 +424,17 @@ class APIServer:
                 elif mode == "per_group":
                     scope = train_scope or "pair"
                     if scope not in {"pair", "item", "store"}:
-                        raise HTTPException(status_code=400, detail="train_scope must be one of: pair, item, store.")
+                        raise HTTPException(
+                            status_code=400,
+                            detail="train_scope must be one of: pair, item, store.",
+                        )
                     train_per_group(cfg, scope)
                     trained = {"mode": "per_group", "scope": scope}
                 else:
-                    raise HTTPException(status_code=400, detail="mode must be one of: global, per_group")
+                    raise HTTPException(
+                        status_code=400,
+                        detail="mode must be one of: global, per_group",
+                    )
                 dt = perf_counter() - t0
 
                 return JSONResponse(
@@ -425,7 +443,10 @@ class APIServer:
                         "trained": trained,
                         "models_dir": str(cfg.paths.models_dir),
                         "horizons": cfg.train.horizons,
-                        "holidays": {"country": cfg.train.hol_country, "subdiv": cfg.train.hol_subdiv},
+                        "holidays": {
+                            "country": cfg.train.hol_country,
+                            "subdiv": cfg.train.hol_subdiv,
+                        },
                         "seconds": round(dt, 2),
                         "note": "Training finished.",
                     }
@@ -433,7 +454,7 @@ class APIServer:
             except HTTPException:
                 raise
             except Exception as e:
-                raise HTTPException(status_code=500, detail=f"Training failed: {e}")
+                raise HTTPException(status_code=500, detail=f"Training failed: {e}") from e
             finally:
                 # cleanup temp upload if used
                 try:

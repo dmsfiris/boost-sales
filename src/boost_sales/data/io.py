@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, Optional, Sequence, Union, IO
+from typing import IO, Dict, Optional, Sequence, Union
 
 import pandas as pd
 
@@ -115,19 +115,9 @@ def load_sales_csv(
     if price_col in df.columns:
         df[price_col] = pd.to_numeric(df[price_col], errors="coerce").astype("float64").round(2)
     if promo_col in df.columns:
-        df[promo_col] = (
-            pd.to_numeric(df[promo_col], errors="coerce")
-            .fillna(0)
-            .round(0)
-            .astype("int8")
-        )
+        df[promo_col] = pd.to_numeric(df[promo_col], errors="coerce").fillna(0).round(0).astype("int8")
     if sales_col in df.columns:
-        df[sales_col] = (
-            pd.to_numeric(df[sales_col], errors="coerce")
-            .fillna(0)
-            .round(0)
-            .astype("int64")
-        )
+        df[sales_col] = pd.to_numeric(df[sales_col], errors="coerce").fillna(0).round(0).astype("int64")
 
     # Canonical order (drop any extras silently, keep known order)
     df = _order_cols(df, [date_col, store_col, item_col, price_col, promo_col, sales_col])

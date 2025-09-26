@@ -2,23 +2,25 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import List, Optional, Sequence, Tuple, Literal, Union, Any
+from typing import Any, List, Literal, Optional, Sequence, Tuple, Union
 
 from pydantic import BaseModel, Field, field_validator
-
 
 # =========================
 # Paths & column names
 # =========================
 
+
 class Paths(BaseModel):
     """Centralized filesystem locations."""
+
     data_csv: Path = Field(default=Path("data/sales.csv"))
     models_dir: Path = Field(default=Path("models"))
 
 
 class Columns(BaseModel):
     """Rename these if your legacy used different column names."""
+
     date: str = "date"
     store: str = "store_id"
     item: str = "item_id"
@@ -38,6 +40,7 @@ class Columns(BaseModel):
 # =========================
 # Feature config
 # =========================
+
 
 class CalendarConfig(BaseModel):
     # Quality: calendar features are cheap and often helpful
@@ -65,13 +68,13 @@ class LagRollConfig(BaseModel):
     # - 7 & 28 are common; 28 is also used as the price ratio denominator below
     roll_windows: Sequence[int] = (7, 28)
 
-    roll_use_target: bool = True              # keep: strong signal, cheap
-    roll_min_periods: Optional[int] = None    # set to exact legacy if you must match outputs
+    roll_use_target: bool = True  # keep: strong signal, cheap
+    roll_min_periods: Optional[int] = None  # set to exact legacy if you must match outputs
 
     # Std adds features but costs extra compute; enable only if you want a (small) lift
-    include_std: bool = False                 # True = (slightly) better, slower
+    include_std: bool = False  # True = (slightly) better, slower
 
-    include_price_roll: bool = True           # keep: needed for price ratio context
+    include_price_roll: bool = True  # keep: needed for price ratio context
     price_col: str = "price"
 
 
@@ -89,12 +92,14 @@ class FutureControlsConfig(BaseModel):
 # Output formatting
 # =========================
 
+
 class OutputUnitConfig(BaseModel):
     """
     Controls how forecasted values are formatted in outputs (post-processing only).
     - unit_type="integer": round to nearest int (e.g., unit counts).
     - unit_type="float": round to decimal_places (e.g., weight).
     """
+
     unit_type: Literal["integer", "float"] = "float"
     decimal_places: int = 2
 
@@ -113,6 +118,7 @@ class OutputUnitConfig(BaseModel):
 # Training / modeling config
 # =========================
 
+
 class TrainingConfig(BaseModel):
     # Horizons to train; override via CLI if needed
     horizons: List[int] = Field(default_factory=lambda: [1, 2, 3, 4, 5, 6, 7])
@@ -123,30 +129,30 @@ class TrainingConfig(BaseModel):
 
     # Reproducibility & threading
     random_state: int = 42
-    nthread: Optional[int] = None            # None = use all cores; CLI can override
+    nthread: Optional[int] = None  # None = use all cores; CLI can override
     enforce_single_thread_env: bool = False  # True only if you need bit-for-bit parity
 
     # XGBoost knobs (quality ↔ speed)
     # - n_estimators: higher with early_stopping is often best (set big cap; let ES stop early)
     # - tree_method="hist": large speedup with minimal quality loss
-    n_estimators: int = 2000                 # cap; ES will usually stop < this
-    max_depth: int = 6                       # 6–8 typical; deeper = slower/overfit risk
-    learning_rate: float = 0.05              # 0.03–0.1; lower = steadier but needs more trees
-    subsample: Optional[float] = 0.8         # 0.7–0.9 helps generalization
+    n_estimators: int = 2000  # cap; ES will usually stop < this
+    max_depth: int = 6  # 6–8 typical; deeper = slower/overfit risk
+    learning_rate: float = 0.05  # 0.03–0.1; lower = steadier but needs more trees
+    subsample: Optional[float] = 0.8  # 0.7–0.9 helps generalization
     colsample_bytree: Optional[float] = 0.8  # 0.7–0.9 helps generalization
     min_child_weight: Optional[float] = None
     gamma: Optional[float] = None
     reg_alpha: Optional[float] = None
     reg_lambda: Optional[float] = None
     tree_method: Optional[str] = "hist"
-    max_bin: Optional[int] = None            # set 512 for a tiny lift, slightly slower
+    max_bin: Optional[int] = None  # set 512 for a tiny lift, slightly slower
 
     # Validation / early stopping
     # Use exactly ONE of these:
     #   - valid_cutoff_date: "YYYY-MM-DD" (explicit time-based split)
     #   - valid_tail_days: N (automatic: last N days used as validation)
     valid_cutoff_date: Optional[str] = None
-    valid_tail_days: Optional[int] = 28      # set None to disable auto-cutoff
+    valid_tail_days: Optional[int] = 28  # set None to disable auto-cutoff
 
     early_stopping_rounds: Optional[int] = 36
     verbose_eval: Union[bool, int] = 0
@@ -202,6 +208,7 @@ class TrainingConfig(BaseModel):
 
 class AppConfig(BaseModel):
     """Top-level config passed through the pipeline."""
+
     paths: Paths = Field(default_factory=Paths)
     cols: Columns = Field(default_factory=Columns)
     calendar: CalendarConfig = Field(default_factory=CalendarConfig)
@@ -241,6 +248,7 @@ class AppConfig(BaseModel):
 # Helpers
 # =========================
 
+
 def load_default() -> AppConfig:
     """Return a fresh config with defaults."""
     return AppConfig()
@@ -259,8 +267,15 @@ def xgb_params_from(cfg: AppConfig) -> dict:
         "seed": p.random_state,
     }
     for k in (
-        "subsample", "colsample_bytree", "min_child_weight", "gamma",
-        "reg_alpha", "reg_lambda", "tree_method", "max_bin", "nthread"
+        "subsample",
+        "colsample_bytree",
+        "min_child_weight",
+        "gamma",
+        "reg_alpha",
+        "reg_lambda",
+        "tree_method",
+        "max_bin",
+        "nthread",
     ):
         val = getattr(p, k)
         if val is not None:

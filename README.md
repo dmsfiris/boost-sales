@@ -112,21 +112,27 @@ pip install -e ".[webui]"
 
 > If you don’t need the web UI, you can install without extras: `pip install -e .`
 
-### Run the app (Dev)
+## Run the app (Dev)
 
+Start the web UI + REST API using the CLI.
+
+**Bash (macOS/Linux):**
 ```bash
-# Environment
-export SF_MODELS_DIR=./models
-export SF_DATA_CSV=./data/sales.csv          # optional
-export SF_HOL_COUNTRY=US                     # default: US
-# export SF_HOL_SUBDIV=CA                    # optional (e.g., US-CA)
-
-# Start
-uvicorn boost_sales.api.server:app --reload --port 8000
+boost-sales serve-web --host 0.0.0.0 --port 8000 --reload
+# Fallback if the command isn't on PATH:
+python -m boost_sales.cli serve-web --host 0.0.0.0 --port 8000 --reload
 ```
 
-Open the UI: `http://localhost:8000`  
-Interactive API docs: `http://localhost:8000/docs` (Swagger UI), `http://localhost:8000/redoc`
+**PowerShell (Windows):**
+```powershell
+boost-sales serve-web --host 0.0.0.0 --port 8000 --reload
+# Fallback:
+python -m boost_sales.cli serve-web --host 0.0.0.0 --port 8000 --reload
+```
+
+- UI: http://localhost:8000  
+- API docs: http://localhost:8000/docs  
+- Defaults: the models directory is `./models` (auto-created). If `./data/sales.csv` exists, it is used automatically; otherwise you can upload a CSV from the UI.
 
 ### Prepare a training dataset
 
